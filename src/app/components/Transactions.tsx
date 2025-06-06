@@ -1,7 +1,7 @@
 'use client';
 import { useState } from "react";
 
-export default function Transactions(
+interface TransactionsProps {
     isDarkMode: boolean,
     exportTransactions: () => void,
     transactions: any[],
@@ -14,7 +14,22 @@ export default function Transactions(
     setEditTransactionAmount: (value: string) => void,
     editTransactionNote: string,
     setEditTransactionNote: (value: string) => void
-) {
+}
+
+export default function Transactions({
+    isDarkMode,
+    exportTransactions,
+    transactions,
+    deleteTransaction,
+    startEditingTransaction,
+    cancelEditingTransaction,
+    saveEditingTransaction,
+    editingTransactionId,
+    editTransactionAmount,
+    setEditTransactionAmount,
+    editTransactionNote,
+    setEditTransactionNote
+}: TransactionsProps) {
     
     return (
         <div className={`p-6 border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} shadow-md mt-6`}>

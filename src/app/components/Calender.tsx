@@ -7,7 +7,7 @@ type MonthlySummary = {
     totalProfitLoss: number;
 };
 
-export default function Calendar(
+interface CalendarProps {
     isDarkMode: boolean,
     handlePrevMonth: () => void,
     handleNextMonth: () => void,
@@ -18,7 +18,20 @@ export default function Calendar(
     exportDailyCalendarData: () => void,
     exportWeeklyCalendarData: () => void,
     exportMonthlyCalendarData: () => void
-) {
+}
+
+export default function Calendar({
+    isDarkMode,
+    handlePrevMonth,
+    handleNextMonth,
+    currentMonth,
+    dailyStats,
+    weeklySummaries,
+    monthlySummary,
+    exportDailyCalendarData,
+    exportWeeklyCalendarData,
+    exportMonthlyCalendarData,
+}: CalendarProps) {
 
     const daysInMonth = getDaysInMonth(currentMonth);
     

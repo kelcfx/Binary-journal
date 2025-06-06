@@ -13,7 +13,6 @@ import ShowWeeklyProfitExpectationModal from "./Modal/ShowWeeklyProfitExpectatio
 import ShowAddJournalModal from "./Modal/ShowAddJournalModal";
 
 export default function Main() {
-    const { logOut } = useAuth();
     const { user } = useAuth();
     const { theme, setTheme } = useTheme();
     const [showModal, setShowModal] = useState(false);
@@ -79,6 +78,9 @@ export default function Main() {
     });
 
     const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [dailyStats, setDailyStats] = useState({});
+    const [weeklySummaries, setWeeklySummaries] = useState([]);
+    const [monthlySummary, setMonthlySummary] = useState({ totalProfitLoss: 0, totalTrades: 0 });
     const [goalHistory, setGoalHistory] = useState([]);
     const [editingJournalId, setEditingJournalId] = useState(null);
     const [editJournalName, setEditJournalName] = useState('');
@@ -87,9 +89,9 @@ export default function Main() {
     const userId = user?.uid;
     const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || 'defaultAppId';
 
-    const toggleTheme = () => {
-        setTheme(theme === 'dark' ? 'light' : 'dark');
-    };
+    // const toggleTheme = () => {
+    //     setTheme(theme === 'dark' ? 'light' : 'dark');
+    // };
 
     const isDarkMode = theme === 'dark';
 
@@ -902,23 +904,17 @@ export default function Main() {
     
 
     // If data is still loading, show a loading spinner
-    if (loading) {
-        return (
-            <div className={`flex items-center justify-center min-h-screen ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-800'} font-inter`}>
-                <div className="text-lg font-semibold">Loading journal data...</div>
-            </div>
-        );
-    }
+    // if (loading) {
+    //     return (
+    //         <div className={`flex items-center justify-center min-h-screen ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-800'} font-inter`}>
+    //             <div className="text-lg font-semibold">Loading journal data...</div>
+    //         </div>
+    //     );
+    // }
 
     return (
         <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-800'} p-4 font-inter`}>
-            <button onClick={toggleTheme} className="mb-4">
-                {isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            </button>
-            <button onClick={logOut}>Sign out</button>
-            <button onClick={() => showMessageBox('This is a message')}>Show Message</button>
-            <button onClick={() => showConfirmationModal('Are you sure?', () => alert('Confirmed!'))}>Show Confirmation</button>
-            {/* Custom Modal */}
+            {/* Custom Modal
             {showModal && (
                 <ShowModal
                     isDarkMode={isDarkMode}
@@ -928,7 +924,7 @@ export default function Main() {
                 />
             )}
             {/* Capital Management Modal */}
-            {showCapitalManagementModal && (
+            {/* {showCapitalManagementModal && (
                 <ShowCapitalManagementModal
                     isDarkMode={isDarkMode}
                     setShowCapitalManagementModal={setShowCapitalManagementModal}
@@ -940,9 +936,9 @@ export default function Main() {
                     handleWithdraw={handleWithdraw}
                     handleResetJournal={handleResetJournal}
                 />
-            )}
+            )} */}
             {/* Daily Profit Expectation Modal */}
-            {showDailyProfitExpectationModal && (
+            {/* {showDailyProfitExpectationModal && (
                 <ShowDailyProfitExpectationModal
                     isDarkMode={isDarkMode}
                     setShowDailyProfitExpectationModal={setShowDailyProfitExpectationModal}
@@ -951,9 +947,9 @@ export default function Main() {
                     handleSaveDailyProfitExpectation={handleSaveDailyProfitExpectation}
                     dailyProfitExpectation={dailyProfitExpectation}
                 />
-            )}
+            )} */}
             {/* Weekly Profit Expectation Modal */}
-            {showWeeklyProfitExpectationModal && (
+            {/* {showWeeklyProfitExpectationModal && (
                 <ShowWeeklyProfitExpectationModal
                     isDarkMode={isDarkMode}
                     setShowWeeklyProfitExpectationModal={setShowWeeklyProfitExpectationModal}
@@ -962,7 +958,7 @@ export default function Main() {
                     handleSaveWeeklyProfitExpectation={handleSaveWeeklyProfitExpectation}
                     weeklyProfitExpectation={weeklyProfitExpectation}
                 />
-            )}
+            )} */}
             {/* Add New Journal Modal */}
             {showAddJournalModal && (
                 <ShowAddJournalModal
@@ -972,12 +968,46 @@ export default function Main() {
                     handleCreateJournal={handleCreateJournal}
                     setNewJournalName={setNewJournalName}
                 />
-            )}
+            )} 
 
             {/* Main displayed plage */}
             <SectionPage
                 isDarkMode={isDarkMode}
-                toggleTheme={toggleTheme}
+                currentJournalId={currentJournalId}
+                journals={journals}
+                handleSelectJournal={handleSelectJournal} 
+                setShowAddJournalModal={setShowAddJournalModal}
+                setCurrentPage={setCurrentPage}
+                currentPage={currentPage}
+                editingJournalId={editingJournalId}
+                editJournalName={editJournalName}
+                setEditJournalName={setEditJournalName}
+                handleDeleteJournal= {handleDeleteJournal}
+                startEditingJournal={startEditingJournal}
+                cancelEditingJournal={cancelEditingJournal}
+                saveEditingJournal={saveEditingJournal}
+                exportGoalHistory={exportGoalHistory}
+                goalHistory={goalHistory}
+                handlePrevMonth={handlePrevMonth}
+                handleNextMonth={handleNextMonth}
+                currentMonth={currentMonth}
+                dailyStats={dailyStats}
+                weeklySummaries={weeklySummaries}
+                monthlySummary={monthlySummary}
+                exportDailyCalendarData={exportDailyCalendarData}
+                exportWeeklyCalendarData={exportWeeklyCalendarData}
+                exportMonthlyCalendarData={exportMonthlyCalendarData}
+                exportTransactions={exportTransactions}
+                transactions={transactions}
+                deleteTransaction={deleteTransaction}
+                startEditingTransaction={startEditingTransaction}
+                cancelEditingTransaction={cancelEditingTransaction}
+                saveEditingTransaction={saveEditingTransaction}
+                editingTransactionId={editingTransactionId}
+                editTransactionAmount={editTransactionAmount}
+                setEditTransactionAmount={setEditTransactionAmount}
+                editTransactionNote={editTransactionNote}
+                setEditTransactionNote={setEditTransactionNote}
              />
         </div>
     )

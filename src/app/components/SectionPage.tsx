@@ -8,26 +8,114 @@ import Calendar from "./Calender";
 import GoalHistory from "./GoalHistory";
 import JournalManagement from "./JournalManagement";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "next-themes";
+
 
 interface SectionPageProps {
     isDarkMode: boolean;
-    toggleTheme: boolean;
+    currentJournalId: string;
+    journals: any[]; // You may want to replace 'any[]' with a more specific type if available
+    handleSelectJournal: (id: string, name: string) => void;
+    setShowAddJournalModal: (show: boolean) => void;
+    setCurrentPage: (page: string) => void;
+    currentPage: string;
+    editingJournalId: string | null;
+    editJournalName: string;
+    setEditJournalName: (name: string) => void;
+    handleDeleteJournal: (id: string) => void;
+    startEditingJournal: (id: string, name: string) => void;
+    cancelEditingJournal: () => void;
+    saveEditingJournal: () => void;
+    exportGoalHistory: () => void; // Add the correct type for exportGoalHistory
+    goalHistory: any; // Add this if goalHistory is also missing from the interface
+    exportDailyCalendarData: () => void;
+    exportWeeklyCalendarData: () => void;
+    exportMonthlyCalendarData: () => void;
+    handlePrevMonth: () => void;
+    handleNextMonth: () => void;
+    currentMonth: string;
+    dailyStats: any;
+    weeklySummaries: any;
+    monthlySummary: any;
+    editingTransactionId: string | null; // Add this line with the appropriate type
+    deleteTransaction: (id: string) => void; // Add this line with the appropriate type
+    exportTransactions: () => void;
+    transactions: any;
+    deleteTransaction: (id: string) => void;
+    startEditingTransaction: (id: string) => void;
+    cancelEditingTransaction: () => void;
+    saveEditingTransaction: () => void;
+    editingTransactionId: string | null;
+    editTransactionAmount: any;
+    setEditTransactionAmount: (amount: any) => void;
+    editTransactionNote: string;
+    setEditTransactionNote: (note: string) => void
 }
 
-export default function SectionPage({ isDarkMode, toggleTheme }: SectionPageProps) {
-    const { user } = useAuth();
+export default function SectionPage({ 
+    isDarkMode,
+    currentJournalId,
+    journals,
+    handleSelectJournal,
+    setShowAddJournalModal,
+    setCurrentPage,
+    currentPage,
+    editingJournalId,
+    editJournalName,
+    setEditJournalName,
+    handleDeleteJournal,
+    startEditingJournal,
+    cancelEditingJournal,
+    saveEditingJournal,
+    exportGoalHistory,
+    goalHistory,
+    handlePrevMonth,
+    handleNextMonth,
+    currentMonth,
+    dailyStats,
+    weeklySummaries,
+    monthlySummary,
+    exportDailyCalendarData,
+    exportWeeklyCalendarData,
+    exportMonthlyCalendarData,
+    exportTransactions,
+    transactions,
+    deleteTransaction,
+    startEditingTransaction,
+    cancelEditingTransaction,
+    saveEditingTransaction,
+    editingTransactionId,
+    editTransactionAmount,
+    setEditTransactionAmount,
+    editTransactionNote,
+    setEditTransactionNote
+}: SectionPageProps) {
+    const { user, logOut } = useAuth();
     const userName = user?.displayName;
+    const { theme, setTheme } = useTheme();
+    const toggleTheme = () => {
+        setTheme(theme === 'dark' ? 'light' : 'dark');
+    };
 
     return (
-        <div className={`max-w-4xl mx-auto rounded-xl shadow-lg ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-6 md:p-8`}>
+        <div className={`max-w-6xl mx-auto rounded-xl shadow-lg ${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-6 md:p-8`}>
             <h1 className={`text-3xl font-bold text-center mb-6 ${isDarkMode ? 'text-gray-200' : 'text-gray-800'}`}>
                 Binary Options Trading Journal
             </h1>
         
             {/* User ID Display */}
-            <div className={`mb-6 p-4 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-600'} rounded-xl text-sm break-words shadow-inner`}>
-                Welcome: <span className={`font-mono font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>{userName}</span>
+            <div className={`mb-6 p-4 flex items-center justify-between ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-600'} rounded-xl text-sm break-words shadow-inner`}>
+                <div>
+                    Welcome: <span className={`font-mono font-semibold ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>{userName}</span>
+                </div>
+                <button
+                    onClick={logOut}
+                    className={`px-3 py-1.5 ${isDarkMode ? 'bg-gray-600 text-white hover:bg-gray-700' : 'bg-gray-500 text-white hover:bg-gray-600'} rounded-full text-sm transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2`}
+                >
+                    Sign out
+                </button>
             </div>
+
         
             {/* Current Journal Display and Selector */}
             <div className={`mb-6 p-4 ${isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-200 text-gray-600'} rounded-xl text-sm break-words shadow-inner flex items-center justify-between flex-wrap gap-2`}>
@@ -40,7 +128,7 @@ export default function SectionPage({ isDarkMode, toggleTheme }: SectionPageProp
                             handleSelectJournal(selectedJournal.id, selectedJournal.name);
                         }
                     }}
-                    className={`p-2 border ${isDarkMode ? 'border-gray-600' : 'border-gray-300'} ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-white text-gray-900'} rounded-xl shadow-sm focus:ring-gray-500 focus:border-gray-500`}
+                    className={`p-4 border ${isDarkMode ? 'border-gray-600' : 'border-gray-300'} ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-white text-gray-900'} rounded-xl shadow-sm focus:ring-gray-500 focus:border-gray-500`}
                 >
                     {journals.length === 0 ? (
                         <option value="">No Journals</option>
@@ -140,32 +228,76 @@ export default function SectionPage({ isDarkMode, toggleTheme }: SectionPageProp
             </div>
         
             {/* Conditional Rendering of Pages */}
-            {currentPage === 'Dashboard' && (
+            {/* {currentPage === 'Dashboard' && (
                 <Dashboard />
-            )}
+            )} */}
 
-            {currentPage === 'TradeLogs' && (
+            {/* {currentPage === 'TradeLogs' && (
                 <TradeLogs />
-            )}
+            )} */}
 
-            {currentPage === 'Statistics' && (
+            {/* {currentPage === 'Statistics' && (
                 <Statistics />
-            )}
+            )} */}
 
+            {/* Transactions page */}
             {currentPage === 'Transactions' && (
-                <Transactions />
+                <Transactions
+                    isDarkMode={isDarkMode}
+                    exportTransactions={exportTransactions}
+                    transactions={transactions}
+                    deleteTransaction={deleteTransaction}
+                    startEditingTransaction={startEditingTransaction}
+                    cancelEditingTransaction={cancelEditingTransaction}
+                    saveEditingTransaction={saveEditingTransaction}
+                    editingTransactionId={editingTransactionId}
+                    editTransactionAmount={editTransactionAmount}
+                    setEditTransactionAmount={setEditTransactionAmount}
+                    editTransactionNote={editTransactionNote}
+                    setEditTransactionNote={setEditTransactionNote}
+                />
             )}
 
+            {/* Calendar page */}
             {currentPage === 'Calendar' && (
-                <Calendar />
+                <Calendar
+                    isDarkMode={isDarkMode}
+                    handlePrevMonth={handlePrevMonth}
+                    handleNextMonth={handleNextMonth}
+                    currentMonth={currentMonth}
+                    dailyStats={dailyStats}
+                    weeklySummaries={weeklySummaries}
+                    monthlySummary={monthlySummary}
+                    exportDailyCalendarData={exportDailyCalendarData}
+                    exportWeeklyCalendarData={exportWeeklyCalendarData}
+                    exportMonthlyCalendarData={exportMonthlyCalendarData}
+                />
             )}
 
+              {/* Goal history page */}
             {currentPage === 'GoalHistory' && (
-                <GoalHistory />
+                <GoalHistory
+                    isDarkMode={isDarkMode}
+                    exportGoalHistory={exportGoalHistory}
+                    goalHistory={goalHistory}
+                />
             )}
 
+            {/* Trade Journal Management Page */}
             {currentPage === 'JournalManagement' && (
-                <JournalManagement />
+                <JournalManagement
+                    isDarkMode={isDarkMode}
+                    journals={journals}
+                    currentJournalId={currentJournalId}
+                    handleSelectJournal={handleSelectJournal}
+                    editingJournalId={editingJournalId}
+                    editJournalName={editJournalName}
+                    setEditJournalName={setEditJournalName}
+                    handleDeleteJournal={handleDeleteJournal}
+                    startEditingJournal={startEditingJournal}
+                    cancelEditingJournal={cancelEditingJournal}
+                    saveEditingJournal={saveEditingJournal}
+                />
             )}
         </div>
     )
