@@ -1,8 +1,24 @@
 'use client';
-import { useState } from "react";
 
-export default function GoalHistory() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+
+interface Goal {
+    id: string | number;
+    type: string;
+    periodStart?: { toDate: () => Date };
+    periodEnd?: { toDate: () => Date };
+    goalAmount: number;
+    actualProfit: number;
+    achieved: boolean;
+}
+
+interface GoalHistoryProps {
+    isDarkMode: boolean;
+    exportGoalHistory: () => void;
+    goalHistory: Goal[];
+}
+
+export default function GoalHistory({ isDarkMode, exportGoalHistory, goalHistory }: GoalHistoryProps) {
+
     return (
         <div className={`p-6 border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} shadow-md mt-6`}>
             <h2 className={`text-2xl font-semibold mb-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-800'}`}>Goal History</h2>

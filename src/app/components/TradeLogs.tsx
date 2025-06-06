@@ -1,8 +1,38 @@
 'use client';
-import { useState } from "react";
 
-export default function TradeLogs() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+export default function TradeLogs(
+    isDarkMode: boolean,
+    handleAddTrade: (e: React.FormEvent<HTMLFormElement>) => void,
+    trades: any[],
+    exportTradeHistory: () => void,
+    asset: string,
+    setAsset: (value: string) => void,
+    direction: string,
+    setDirection: (value: string) => void,
+    entryPrice: string,
+    setEntryPrice: (value: string) => void,
+    expiryPrice: string,
+    setExpiryPrice: (value: string) => void,
+    openTime: string,
+    setOpenTime: (value: string) => void,
+    expirationTime: string,
+    setExpirationTime: (value: string) => void,
+    amount: string,
+    setAmount: (value: string) => void,
+    outcome: string,
+    setOutcome: (value: string) => void,
+    profit: string,
+    setProfit: (value: string) => void,
+    notes: string,
+    setNotes: (value: string) => void,
+    editingTradeId: string | null,
+    editTradeData: any,
+    setEditTradeData: (data: any) => void,
+    cancelEditingTrade: () => void,
+    handleDeleteTrade: (id: string) => void,
+    startEditingTrade: (trade: any) => void,
+    saveEditingTrade: (id: string) => void
+) {
 
     return (
         <>

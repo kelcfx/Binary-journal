@@ -1,8 +1,37 @@
 'use client';
-import { useState } from "react";
 
-export default function JournalManagement() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+type Journal = {
+    id: string;
+    name: string;
+};
+
+type JournalManagementProps = {
+    isDarkMode: boolean;
+    journals: Journal[];
+    editingJournalId: string | null;
+    editJournalName: string;
+    setEditJournalName: (name: string) => void;
+    currentJournalId: string | null;
+    handleDeleteJournal: (id: string, name: string) => void;
+    startEditingJournal: (journal: Journal) => void;
+    cancelEditingJournal: () => void;
+    saveEditingJournal: (id: string) => void;
+    handleSelectJournal: (id: string, name: string) => void;
+};
+
+export default function JournalManagement({
+    isDarkMode,
+    journals,
+    editingJournalId,
+    editJournalName,
+    setEditJournalName,
+    currentJournalId,
+    handleDeleteJournal,
+    startEditingJournal,
+    cancelEditingJournal,
+    saveEditingJournal,
+    handleSelectJournal
+}: JournalManagementProps) {
 
     return (
             <div className={`p-6 border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} shadow-md mt-6`}>

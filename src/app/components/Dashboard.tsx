@@ -1,8 +1,52 @@
 'use client';
-import { useState } from "react";
 
-export default function Dashboard() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+import { getMeterColor } from "../utils/meterColor";
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
+interface DashboardProps {
+    isDarkMode: boolean;
+    currentBalance: number;
+    stats: {
+        totalProfitLoss: number;
+        winRate: number;
+        totalTrades: number;
+        averageProfitPerWin: number;
+        averageLossPerLoss: number;
+        profitFactor: number;
+    };
+    cumulativeProfitLossChartData: Array<{ date: string; ['Cumulative Profit']: number }>;
+    dailyProfitExpectation: number;
+    weeklyProfitExpectation: number;
+    currentDayProfit: number;
+    currentWeekProfit: number;
+    dailyProgress: number;
+    weeklyProgress: number;
+    amountToRisk: number;
+    setShowDailyProfitExpectationModal: (show: boolean) => void;
+    setShowWeeklyProfitExpectationModal: (show: boolean) => void;
+    setShowCapitalManagementModal: (show: boolean) => void;
+    handleGetTradingInsights: () => void;
+    llmLoading: boolean;
+}
+
+export default function Dashboard({
+    isDarkMode,
+    currentBalance,
+    stats,
+    cumulativeProfitLossChartData,
+    dailyProfitExpectation,
+    weeklyProfitExpectation,
+    currentDayProfit,
+    currentWeekProfit,
+    dailyProgress,
+    weeklyProgress,
+    amountToRisk,
+    setShowDailyProfitExpectationModal,
+    setShowWeeklyProfitExpectationModal,
+    setShowCapitalManagementModal,
+    handleGetTradingInsights,
+    llmLoading
+}: DashboardProps) {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

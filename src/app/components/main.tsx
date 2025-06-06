@@ -8,6 +8,9 @@ import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTim
 import { db } from "../lib/firebaseClient";
 import SectionPage from "./SectionPage";
 import { endOfWeek, formatYYYYMMDD, getDaysInMonth, startOfWeek } from "../utils/dateManipulation";
+import ShowDailyProfitExpectationModal from "./Modal/ShowDailyProfitExpectationModal";
+import ShowWeeklyProfitExpectationModal from "./Modal/ShowWeeklyProfitExpectationModal";
+import ShowAddJournalModal from "./Modal/ShowAddJournalModal";
 
 export default function Main() {
     const { logOut } = useAuth();
@@ -925,7 +928,7 @@ export default function Main() {
                 />
             )}
             {/* Capital Management Modal */}
-            {/* {showCapitalManagementModal && (
+            {showCapitalManagementModal && (
                 <ShowCapitalManagementModal
                     isDarkMode={isDarkMode}
                     setShowCapitalManagementModal={setShowCapitalManagementModal}
@@ -934,14 +937,48 @@ export default function Main() {
                     withdrawAmount={withdrawAmount}
                     setWithdrawAmount={setWithdrawAmount}
                     handleDeposit={handleDeposit}
+                    handleWithdraw={handleWithdraw}
+                    handleResetJournal={handleResetJournal}
                 />
-            )} */}
+            )}
+            {/* Daily Profit Expectation Modal */}
+            {showDailyProfitExpectationModal && (
+                <ShowDailyProfitExpectationModal
+                    isDarkMode={isDarkMode}
+                    setShowDailyProfitExpectationModal={setShowDailyProfitExpectationModal}
+                    newDailyProfitExpectation={newDailyProfitExpectation}
+                    setNewDailyProfitExpectation={setNewDailyProfitExpectation}
+                    handleSaveDailyProfitExpectation={handleSaveDailyProfitExpectation}
+                    dailyProfitExpectation={dailyProfitExpectation}
+                />
+            )}
+            {/* Weekly Profit Expectation Modal */}
+            {showWeeklyProfitExpectationModal && (
+                <ShowWeeklyProfitExpectationModal
+                    isDarkMode={isDarkMode}
+                    setShowWeeklyProfitExpectationModal={setShowWeeklyProfitExpectationModal}
+                    newWeeklyProfitExpectation={newWeeklyProfitExpectation}
+                    setNewWeeklyProfitExpectation={setNewWeeklyProfitExpectation}
+                    handleSaveWeeklyProfitExpectation={handleSaveWeeklyProfitExpectation}
+                    weeklyProfitExpectation={weeklyProfitExpectation}
+                />
+            )}
+            {/* Add New Journal Modal */}
+            {showAddJournalModal && (
+                <ShowAddJournalModal
+                    isDarkMode={isDarkMode}
+                    setShowAddJournalModal={setShowAddJournalModal}
+                    newJournalName={newJournalName}
+                    handleCreateJournal={handleCreateJournal}
+                    setNewJournalName={setNewJournalName}
+                />
+            )}
 
             {/* Main displayed plage */}
-            {/* <SectionPage
+            <SectionPage
                 isDarkMode={isDarkMode}
                 toggleTheme={toggleTheme}
-             /> */}
+             />
         </div>
     )
 }

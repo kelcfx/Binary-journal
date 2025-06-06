@@ -1,8 +1,21 @@
 'use client';
-import { useState } from "react";
 
-export default function ShowAddJournalModal() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+interface ShowAddJournalModalProps {
+    isDarkMode: boolean;
+    setShowAddJournalModal: (show: boolean) => void;
+    newJournalName: string;
+    handleCreateJournal: () => void;
+    setNewJournalName: (name: string) => void;
+}
+
+export default function ShowAddJournalModal({
+    isDarkMode,
+    setShowAddJournalModal,
+    newJournalName,
+    handleCreateJournal,
+    setNewJournalName
+}: ShowAddJournalModalProps) {
+    
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className={`${isDarkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} p-6 rounded-xl shadow-xl max-w-md w-full mx-4 relative`}>

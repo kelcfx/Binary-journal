@@ -1,8 +1,22 @@
 'use client';
-import { useState } from "react";
 
-export default function ShowDailyProfitExpectationModal() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+type ShowDailyProfitExpectationModalProps = {
+    isDarkMode: boolean;
+    setShowDailyProfitExpectationModal: (show: boolean) => void;
+    newDailyProfitExpectation: string | number;
+    setNewDailyProfitExpectation: (value: string | number) => void;
+    handleSaveDailyProfitExpectation: () => void;
+    dailyProfitExpectation: number;
+};
+
+export default function ShowDailyProfitExpectationModal({
+    isDarkMode,
+    setShowDailyProfitExpectationModal,
+    newDailyProfitExpectation,
+    setNewDailyProfitExpectation,
+    handleSaveDailyProfitExpectation,
+    dailyProfitExpectation,
+}: ShowDailyProfitExpectationModalProps) {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">

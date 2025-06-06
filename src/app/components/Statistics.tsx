@@ -1,9 +1,50 @@
 'use client';
-import { useState } from "react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine } from 'recharts';
 
-export default function Statistics() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine } from 'recharts';
+import { PIE_COLORS } from '../utils/meterColor';
+
+type StatisticsProps = {
+    isDarkMode: boolean;
+    cumulativeProfitLossChartData: any[];
+    dailyProfitLossBarChartData: any[];
+    dailyProfitExpectation: number;
+    winRateByAssetData: any[];
+    winRateByDirectionData: any[];
+    profitLossDistributionData: any[];
+    tradeCountByDayOfWeekData: any[];
+    tradeCountByHourOfDayData: any[];
+    exportOverallStats: () => void;
+    exportDailyCalendarData: () => void;
+    exportWinRateByAsset: () => void;
+    exportWinRateByDirection: () => void;
+    exportProfitLossDistribution: () => void;
+    exportTradeCountByDayOfWeek: () => void;
+    exportTradeCountByHourOfDay: () => void;
+    averageProfitLossData: any[];
+    exportAverageProfitLoss: () => void;
+};
+
+export default function Statistics({
+    isDarkMode,
+    cumulativeProfitLossChartData,
+    dailyProfitLossBarChartData,
+    dailyProfitExpectation,
+    winRateByAssetData,
+    winRateByDirectionData,
+    profitLossDistributionData,
+    tradeCountByDayOfWeekData,
+    tradeCountByHourOfDayData,
+    exportOverallStats,
+    exportDailyCalendarData,
+    exportWinRateByAsset,
+    exportWinRateByDirection,
+    exportProfitLossDistribution,
+    exportTradeCountByDayOfWeek,
+    exportTradeCountByHourOfDay,
+    averageProfitLossData,
+    exportAverageProfitLoss
+}: StatisticsProps) {
+    
     return (
         <div className={`p-6 border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} shadow-md`}>
             <h2 className={`text-2xl font-semibold mb-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-800'}`}>Performance Charts</h2>

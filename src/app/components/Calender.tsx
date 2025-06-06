@@ -1,8 +1,26 @@
 'use client';
-import { useState } from "react";
 
-export default function Calendar() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+import { formatYYYYMMDD, getDaysInMonth, weekdays } from "../utils/dateManipulation";
+
+type MonthlySummary = {
+    totalTrades: number;
+    totalProfitLoss: number;
+};
+
+export default function Calendar(
+    isDarkMode: boolean,
+    handlePrevMonth: () => void,
+    handleNextMonth: () => void,
+    currentMonth: Date,
+    dailyStats: Record<string, { totalTrades: number; totalProfitLoss: number }>,
+    weeklySummaries: Array<{ startDate: string; endDate: string; totalTrades: number; totalProfitLoss: number }>,
+    monthlySummary: MonthlySummary,
+    exportDailyCalendarData: () => void,
+    exportWeeklyCalendarData: () => void,
+    exportMonthlyCalendarData: () => void
+) {
+
+    const daysInMonth = getDaysInMonth(currentMonth);
     
     return (
         <div className={`p-6 border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} shadow-md`}>

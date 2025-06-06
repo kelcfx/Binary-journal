@@ -5,16 +5,16 @@ import { useState } from "react";
 interface ShowCapitalManagementModalProps {
     isDarkMode: boolean;
     setShowCapitalManagementModal: (show: boolean) => void;
-    
+    depositAmount: string;
+    setDepositAmount: (amount: string) => void;
+    withdrawAmount: string;
+    setWithdrawAmount: (amount: string) => void;
+    handleDeposit: () => void;
+    handleWithdraw: () => void;
+    handleResetJournal: () => void;
 }
-//     depositAmount
-// setDepositAmount 
-// withdrawAmount 
-// setWithdrawAmount 
-// handleDeposit 
-// }
 
-export default function ShowCapitalManagementModal({ isDarkMode, setShowCapitalManagementModal, depositAmount, setDepositAmount, withdrawAmount, setWithdrawAmount, handleDeposit   }: ShowCapitalManagementModalProps) {
+export default function ShowCapitalManagementModal({ isDarkMode, setShowCapitalManagementModal, depositAmount, setDepositAmount, withdrawAmount, setWithdrawAmount, handleDeposit, handleWithdraw, handleResetJournal }: ShowCapitalManagementModalProps) {
     
 
     return (

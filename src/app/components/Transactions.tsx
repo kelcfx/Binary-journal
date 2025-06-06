@@ -1,8 +1,20 @@
 'use client';
 import { useState } from "react";
 
-export default function Transactions() {
-    const [isDarkMode, setIsDarkMode] = useState(false);
+export default function Transactions(
+    isDarkMode: boolean,
+    exportTransactions: () => void,
+    transactions: any[],
+    deleteTransaction: (id: string) => void,
+    startEditingTransaction: (transaction: any) => void,
+    cancelEditingTransaction: () => void,
+    saveEditingTransaction: (id: string) => void,
+    editingTransactionId: string | null,
+    editTransactionAmount: string,
+    setEditTransactionAmount: (value: string) => void,
+    editTransactionNote: string,
+    setEditTransactionNote: (value: string) => void
+) {
     
     return (
         <div className={`p-6 border ${isDarkMode ? 'border-gray-700' : 'border-gray-200'} rounded-xl ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'} shadow-md mt-6`}>
