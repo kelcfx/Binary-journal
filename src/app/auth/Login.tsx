@@ -22,7 +22,7 @@ export default function Login() {
                 style={backgroundStyle}
             >
                 <h1 className="text-4xl font-bold text-white shadow-lg md:text-5xl" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.5)' }}>
-                    Welcome to Your Trade Journal
+                    Welcome to your Trading Journal
                 </h1>
 
                 <p className="mt-4 max-w-2xl text-lg leading-relaxed text-gray-200 md:text-xl" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.7)' }}>
