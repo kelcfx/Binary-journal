@@ -16,17 +16,51 @@ import { HumanMessage } from "@langchain/core/messages";
 
 export default function Main() {
     const { user } = useAuth();
-    const { theme, setTheme } = useTheme();
+    const { theme } = useTheme();
     const userId = user?.uid;
     const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || 'defaultAppId';
     // const toggleTheme = () => {
     //     setTheme(theme === 'dark' ? 'light' : 'dark');
     // };
     const isDarkMode = theme === 'dark';
-    type Journal = { id: string; name: string; [key: string]: any };
+
+    type Journal = {
+        id: string;
+        name: string;
+        lastAccessedAt?: Timestamp;
+        [key: string]: unknown;
+    };
+
+    interface Trade {
+        id: string;
+        asset: string;
+        numberOfTrades: number;
+        tradeDuration: string;
+        direction: string;
+        tradeStartTime: string;
+        tradeStopTime: string;
+        amount: number;
+        outcome: string;
+        profit: number;
+        notes: string;
+        timestamp?: { toDate: () => Date };
+    }
+
+    // interface TradeWithId extends Trade {
+    //     id: string;
+    //     timestamp: Timestamp;
+    //   }
+
+    interface Transaction {
+        id: string;
+        type: 'deposit' | 'withdrawal';
+        amount: number;
+        note?: string;
+        timestamp: { toDate: () => Date };
+    }
     const [journals, setJournals] = useState<Journal[]>([]);
     const [currentJournalId, setCurrentJournalId] = useState<string | null>(null);
-    const [currentJournalName, setCurrentJournalName] = useState('');
+    const [currentJournalName, setCurrentJournalName] = useState(''); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     const [trades, setTrades] = useState<TradeWithId[]>([]);
     // Form state for adding new trade
@@ -49,7 +83,7 @@ export default function Main() {
     const [modalConfirmAction, setModalConfirmAction] = useState<(() => void) | undefined>(undefined);
 
     const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [dailyStats, setDailyStats] = useState({});
+    const [dailyStats, setDailyStats] = useState<{ [dateKey: string]: { totalTrades: number; totalProfitLoss: number; tradeCount: number } }>({});
     type WeeklySummary = { startDate: string; endDate: string; totalProfitLoss: string; totalTrades: number };
     const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
     const [monthlySummary, setMonthlySummary] = useState({ totalProfitLoss: 0, totalTrades: 0 });
@@ -57,21 +91,13 @@ export default function Main() {
     const [currentBalance, setCurrentBalance] = useState(0);
     const [depositAmount, setDepositAmount] = useState('');
     const [withdrawAmount, setWithdrawAmount] = useState('');
-    type Transaction = {
-        id: string;
-        type: string;
-        amount: number;
-        timestamp?: { toDate: () => Date };
-        note?: string;
-        [key: string]: any;
-    };
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
     const [editTransactionAmount, setEditTransactionAmount] = useState('');
     const [editTransactionNote, setEditTransactionNote] = useState('');
 
     const [llmLoading, setLlmLoading] = useState(false);
-    const [llmInsights, setLlmInsights] = useState('');
+    const [llmInsights, setLlmInsights] = useState(''); // eslint-disable-line @typescript-eslint/no-unused-vars
 
     const [showCapitalManagementModal, setShowCapitalManagementModal] = useState(false);
     const [showDailyProfitExpectationModal, setShowDailyProfitExpectationModal] = useState(false);
@@ -109,6 +135,7 @@ export default function Main() {
         achieved?: boolean;
         [key: string]: unknown;
     };
+
     const [goalHistory, setGoalHistory] = useState<Goal[]>([]);
 
     const [showAddJournalModal, setShowAddJournalModal] = useState(false);
@@ -117,7 +144,7 @@ export default function Main() {
     const [editJournalName, setEditJournalName] = useState('');
 
     // Fetch journals and set current journal
-    const handleCreateJournal = async (name = newJournalName) => {
+    const handleCreateJournal = useCallback(async (name = newJournalName) => {
         if (!db || !userId) { showMessageBox("Database not ready."); return; }
         const trimmedName = name.trim();
         if (!trimmedName) { showMessageBox("Journal name cannot be empty."); return; }
@@ -145,7 +172,7 @@ export default function Main() {
             console.error("Error creating journal:", error);
             showMessageBox("Failed to create journal. Please try again.");
         }
-    };
+    }, [userId, appId, newJournalName]);
 
     useEffect(() => {
         if (db && userId) {
@@ -256,7 +283,7 @@ export default function Main() {
             setGoalHistory([]);
             setCurrentBalance(0);
         }
-    }, [db, userId, currentJournalId]);
+    }, [appId, userId, currentJournalId]);
 
     // Goal Finalization Logic
     useEffect(() => {
@@ -454,7 +481,7 @@ export default function Main() {
         [key: string]: unknown;
     }
 
-    const startEditingTrade = (trade: TradeWithId) => {
+    const startEditingTrade = (trade: Trade) => {
         setEditingTradeId(trade.id);
         setEditTradeData({
             date: trade.timestamp ? formatDateForInput(trade.timestamp.toDate()) : '',
@@ -732,46 +759,56 @@ export default function Main() {
     };
 
     const calculateStats = useCallback(() => {
-        let totalAmountInvested = 0;
         let totalProfitLoss = 0;
         let winCount = 0;
         let lossCount = 0;
         let totalWinProfit = 0;
         let totalLossAmount = 0;
-        let totalTradesCount = 0; // Sum of numberOfTrades from each entry
+        let totalTrades = 0; // Sum of numberOfTrades from each entry
 
         trades.forEach(trade => {
-            totalAmountInvested += trade.amount; // This is total amount for the entry
-            totalProfitLoss += trade.profit;   // This is total profit for the entry
-            totalTradesCount += (trade.numberOfTrades || 1); // Sum up actual trades
+            totalProfitLoss += trade.profit;
+            totalTrades += (trade.numberOfTrades || 1);
 
-            // Assuming 'outcome' applies to the batch of trades in the entry
             if (trade.outcome === 'Win') {
-                winCount += (trade.numberOfTrades || 1); // Count individual wins
+                winCount += (trade.numberOfTrades || 1);
                 totalWinProfit += trade.profit;
             } else if (trade.outcome === 'Loss') {
-                lossCount += (trade.numberOfTrades || 1); // Count individual losses
+                lossCount += (trade.numberOfTrades || 1);
                 totalLossAmount += Math.abs(trade.profit);
             }
         });
 
-        const overallTotalTrades = winCount + lossCount; // More accurate total for win rate
+        const overallTotalTrades = winCount + lossCount;
         const winRate = overallTotalTrades > 0 ? (winCount / overallTotalTrades) * 100 : 0;
-        const averageProfitPerWinningSession = trades.filter(t => t.outcome === 'Win').length > 0 ? totalWinProfit / trades.filter(t => t.outcome === 'Win').length : 0;
-        const averageLossPerLosingSession = trades.filter(t => t.outcome === 'Loss').length > 0 ? totalLossAmount / trades.filter(t => t.outcome === 'Loss').length : 0;
+        const averageProfitPerWin = winCount > 0 ? totalWinProfit / winCount : 0;
+        const averageLossPerLoss = lossCount > 0 ? -totalLossAmount / lossCount : 0; // negative for loss
         const profitFactor = totalLossAmount > 0 ? (totalWinProfit / totalLossAmount) : (totalWinProfit > 0 ? Infinity : 0);
 
+        // Additional stats for LLM prompt
+        const totalTradeEntries = trades.length;
+        const totalIndividualTrades = totalTrades;
+        // Average profit/loss per winning/losing session (not per trade)
+        const winningSessions = trades.filter(trade => trade.outcome === 'Win');
+        const losingSessions = trades.filter(trade => trade.outcome === 'Loss');
+        const averageProfitPerWinningSession = winningSessions.length > 0
+            ? winningSessions.reduce((sum, t) => sum + t.profit, 0) / winningSessions.length
+            : 0;
+        const averageLossPerLosingSession = losingSessions.length > 0
+            ? losingSessions.reduce((sum, t) => sum + t.profit, 0) / losingSessions.length
+            : 0;
+
         return {
-            totalAmountInvested: totalAmountInvested.toFixed(2),
-            totalProfitLoss: totalProfitLoss.toFixed(2),
-            winRate: winRate.toFixed(2),
-            totalTradeEntries: trades.length, // Number of log entries
-            totalIndividualTrades: totalTradesCount, // Total actual trades
-            winCount, // Individual wins
-            lossCount, // Individual losses
-            averageProfitPerWinningSession: averageProfitPerWinningSession.toFixed(2),
-            averageLossPerLosingSession: averageLossPerLosingSession.toFixed(2),
-            profitFactor: profitFactor === Infinity ? 'N/A' : profitFactor.toFixed(2)
+            totalProfitLoss,
+            winRate,
+            totalTrades,
+            averageProfitPerWin,
+            averageLossPerLoss,
+            profitFactor: profitFactor === Infinity ? Number.POSITIVE_INFINITY : profitFactor,
+            totalTradeEntries,
+            totalIndividualTrades,
+            averageProfitPerWinningSession,
+            averageLossPerLosingSession
         };
     }, [trades]);
 
@@ -1113,8 +1150,13 @@ export default function Main() {
             const values = headers.map(header => {
                 let value = row[header];
                 if (typeof value === 'object' && value !== null) {
-                    if (value.toDate && typeof value.toDate === 'function') { // Firestore Timestamp
-                        value = value.toDate().toLocaleString();
+                    if (
+                        typeof value === 'object' &&
+                        value !== null &&
+                        'toDate' in value &&
+                        typeof (value as { toDate?: unknown }).toDate === 'function'
+                    ) { // Firestore Timestamp
+                        value = (value as { toDate: () => Date }).toDate().toLocaleString();
                     } else { // Other objects
                         value = JSON.stringify(value);
                     }
@@ -1199,7 +1241,7 @@ export default function Main() {
             TotalIndividualTrades: dailyStats[date].totalTrades,
             TotalProfitLoss: dailyStats[date].totalProfitLoss,
             TradeEntries: dailyStats[date].tradeCount
-        })).sort((a, b) => new Date(a.Date) - new Date(b.Date));
+        })).sort((a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime());
         exportToCsv(formattedDailyStats, 'calendar_daily_performance.csv');
     };
 
@@ -1306,7 +1348,15 @@ export default function Main() {
                     const remainingJournals = journals.filter(j => j.id !== journalId);
                     if (remainingJournals.length > 0) {
                         // Sort remaining journals by lastAccessedAt (desc) to pick the most recent
-                        remainingJournals.sort((a, b) => (b.lastAccessedAt?.toMillis() || 0) - (a.lastAccessedAt?.toMillis() || 0));
+                        remainingJournals.sort((a, b) => {
+                            const aMillis = a.lastAccessedAt && typeof a.lastAccessedAt.toMillis === 'function'
+                                ? a.lastAccessedAt.toMillis()
+                                : 0;
+                            const bMillis = b.lastAccessedAt && typeof b.lastAccessedAt.toMillis === 'function'
+                                ? b.lastAccessedAt.toMillis()
+                                : 0;
+                            return bMillis - aMillis;
+                        });
                         const newCurrent = remainingJournals[0];
                         await handleSelectJournal(newCurrent.id, newCurrent.name);
                     } else { // This case should not be hit due to the check above
@@ -1380,7 +1430,7 @@ export default function Main() {
                     isDarkMode={isDarkMode}
                     setShowDailyProfitExpectationModal={setShowDailyProfitExpectationModal}
                     newDailyProfitExpectation={newDailyProfitExpectation}
-                    setNewDailyProfitExpectation={setNewDailyProfitExpectation}
+                    setNewDailyProfitExpectation={value => setNewDailyProfitExpectation(String(value))}
                     handleSaveDailyProfitExpectation={handleSaveDailyProfitExpectation}
                     dailyProfitExpectation={dailyProfitExpectation}
                 />
@@ -1424,18 +1474,33 @@ export default function Main() {
                 cancelEditingJournal={cancelEditingJournal}
                 saveEditingJournal={saveEditingJournal}
                 exportGoalHistory={exportGoalHistory}
-                goalHistory={goalHistory}
+                goalHistory={goalHistory.map(g => ({
+                    ...g,
+                    goalAmount: g.goalAmount ?? 0,
+                    actualProfit: g.actualProfit ?? 0,
+                    achieved: g.achieved ?? false
+                }))}
                 handlePrevMonth={handlePrevMonth}
                 handleNextMonth={handleNextMonth}
                 currentMonth={currentMonth}
                 dailyStats={dailyStats}
-                weeklySummaries={weeklySummaries}
+                weeklySummaries={weeklySummaries.map(w => ({
+                    ...w,
+                    totalProfitLoss: Number(w.totalProfitLoss)
+                }))}
                 monthlySummary={monthlySummary}
                 exportDailyCalendarData={exportDailyCalendarData}
                 exportWeeklyCalendarData={exportWeeklyCalendarData}
                 exportMonthlyCalendarData={exportMonthlyCalendarData}
                 exportTransactions={exportTransactions}
-                transactions={transactions}
+                transactions={transactions
+                    .filter(t => t.timestamp && typeof t.timestamp.toDate === 'function')
+                    .map(t => ({
+                        ...t,
+                        type: t.type === "deposit" ? "deposit" : "withdrawal",
+                        timestamp: t.timestamp as { toDate: () => Date } // Type assertion ensures compatibility
+                    })) as Transaction[]
+                }
                 deleteTransaction={deleteTransaction}
                 startEditingTransaction={startEditingTransaction}
                 cancelEditingTransaction={cancelEditingTransaction}
@@ -1478,14 +1543,28 @@ export default function Main() {
                 setNotes={setNotes}
                 editingTradeId={editingTradeId}
                 editTradeData={editTradeData}
-                setEditTradeData={setEditTradeData}
+                setEditTradeData={(data) =>
+                    setEditTradeData({
+                        ...data,
+                        date: String(data.date),
+                        asset: String(data.asset),
+                        direction: String(data.direction),
+                        numberOfTrades: String(data.numberOfTrades),
+                        tradeDuration: String(data.tradeDuration),
+                        tradeStartTime: String(data.tradeStartTime),
+                        tradeStopTime: String(data.tradeStopTime),
+                        outcome: String(data.outcome),
+                        amount: String(data.amount),
+                        profit: String(data.profit),
+                        notes: String(data.notes),
+                    })
+                }
                 cancelEditingTrade={cancelEditingTrade}
                 handleDeleteTrade={handleDeleteTrade}
                 startEditingTrade={startEditingTrade}
                 saveEditingTrade={saveEditingTrade}
                 currentBalance={currentBalance}
                 stats={stats}
-                cumulativeProfitLossChartData={cumulativeProfitLossChartData}
                 weeklyProfitExpectation={weeklyProfitExpectation}
                 currentDayProfit={currentDayProfit}
                 currentWeekProfit={currentWeekProfit}
@@ -1505,6 +1584,8 @@ export default function Main() {
                 setTradeStopTime={setTradeStopTime}
                 tradeStartTime={tradeStartTime}
                 setTradeStartTime={setTradeStartTime}
+                tradeDate={tradeDate}
+                setTradeDate={setTradeDate}
              />
         </div>
     )

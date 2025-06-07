@@ -1,5 +1,6 @@
 'use client';
 
+
 interface Trade {
     id: string;
     asset: string;
@@ -14,6 +15,7 @@ interface Trade {
     notes: string;
     timestamp?: { toDate: () => Date };
 }
+
 
 interface TradeLogsProps {
     isDarkMode: boolean,
