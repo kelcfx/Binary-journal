@@ -64,3 +64,9 @@ export function formatYYYYMMDD(date: Date) {
 };
 
 export const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export function formatDateForInput(date: Date) {
+    if (!date) return '';
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toISOString().split('T')[0];
+};

@@ -4,96 +4,349 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "next-themes";
 import ShowModal from "./Modal/ShowModal";
 import ShowCapitalManagementModal from "./Modal/ShowCapitalManagementModal";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, updateDoc, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, serverTimestamp, doc, setDoc, updateDoc, deleteDoc, getDocs, writeBatch, Timestamp } from 'firebase/firestore';
 import { db } from "../lib/firebaseClient";
 import SectionPage from "./SectionPage";
-import { endOfWeek, formatYYYYMMDD, getDaysInMonth, startOfWeek } from "../utils/dateManipulation";
+import { endOfDay, endOfWeek, isSameWeek, isSameDay, formatDateForInput, formatYYYYMMDD, getDaysInMonth, startOfDay, startOfWeek } from "../utils/dateManipulation";
 import ShowDailyProfitExpectationModal from "./Modal/ShowDailyProfitExpectationModal";
 import ShowWeeklyProfitExpectationModal from "./Modal/ShowWeeklyProfitExpectationModal";
 import ShowAddJournalModal from "./Modal/ShowAddJournalModal";
+import { chat } from "../lib/groqConfig";
+import { HumanMessage } from "@langchain/core/messages";
 
 export default function Main() {
     const { user } = useAuth();
     const { theme, setTheme } = useTheme();
-    const [showModal, setShowModal] = useState(false);
-    // const [showCapitalManagementModal, setShowCapitalManagementModal] = useState(false);
-    const [modalMessage, setModalMessage] = useState('');
-    const [modalConfirmAction, setModalConfirmAction] = useState<(() => void) | undefined>(undefined);
-    const [showDailyProfitExpectationModal, setShowDailyProfitExpectationModal] = useState(false);
-    const [showWeeklyProfitExpectationModal, setShowWeeklyProfitExpectationModal] = useState(false);
-    
-    const [currentPage, setCurrentPage] = useState('Dashboard');
-    const [newJournalName, setNewJournalName] = useState('');
-    const [journals, setJournals] = useState([]);
+    const userId = user?.uid;
+    const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || 'defaultAppId';
+    // const toggleTheme = () => {
+    //     setTheme(theme === 'dark' ? 'light' : 'dark');
+    // };
+    const isDarkMode = theme === 'dark';
+    type Journal = { id: string; name: string; [key: string]: any };
+    const [journals, setJournals] = useState<Journal[]>([]);
     const [currentJournalId, setCurrentJournalId] = useState<string | null>(null);
     const [currentJournalName, setCurrentJournalName] = useState('');
-    const [showAddJournalModal, setShowAddJournalModal] = useState(false);
 
-    type Trade = {
-        id: string;
-        asset: string;
-        direction: string;
-        entryPrice: number;
-        expiryPrice: number;
-        openTime: string;
-        expirationTime: string;
-        outcome: string;
-        amount: number;
-        profit: number;
-        notes: string;
-        [key: string]: any; // for any additional fields
-    };
-    const [trades, setTrades] = useState<Trade[]>([]);
+    const [trades, setTrades] = useState<TradeWithId[]>([]);
+    // Form state for adding new trade
+    const [tradeDate, setTradeDate] = useState(formatDateForInput(new Date())); // New: Date for the trade session
     const [asset, setAsset] = useState('');
-    const [entryPrice, setEntryPrice] = useState('');
-    const [expiryPrice, setExpiryPrice] = useState('');
-    const [amount, setAmount] = useState('');
-    const [profit, setProfit] = useState('');
-    const [openTime, setOpenTime] = useState('');
-    const [expirationTime, setExpirationTime] = useState('');
     const [direction, setDirection] = useState('Buy');
+    // Removed entryPrice, expiryPrice, openTime, expirationTime states for new trade form
+    const [numberOfTrades, setNumberOfTrades] = useState(''); // New
+    const [tradeDuration, setTradeDuration] = useState(''); // New
+    const [tradeStartTime, setTradeStartTime] = useState(''); // New: Time of starting trading for the day
+    const [tradeStopTime, setTradeStopTime] = useState(''); // New: Time of stopping trading for the day
     const [outcome, setOutcome] = useState('Win');
+    const [amount, setAmount] = useState(''); // This will now be total amount for N trades
+    const [profit, setProfit] = useState(''); // This will now be total profit for N trades
     const [notes, setNotes] = useState('');
+
     const [loading, setLoading] = useState(true);
+    const [showModal, setShowModal] = useState(false);
+    const [modalMessage, setModalMessage] = useState('');
+    const [modalConfirmAction, setModalConfirmAction] = useState<(() => void) | undefined>(undefined);
+
+    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [dailyStats, setDailyStats] = useState({});
+    type WeeklySummary = { startDate: string; endDate: string; totalProfitLoss: string; totalTrades: number };
+    const [weeklySummaries, setWeeklySummaries] = useState<WeeklySummary[]>([]);
+    const [monthlySummary, setMonthlySummary] = useState({ totalProfitLoss: 0, totalTrades: 0 });
 
     const [currentBalance, setCurrentBalance] = useState(0);
     const [depositAmount, setDepositAmount] = useState('');
     const [withdrawAmount, setWithdrawAmount] = useState('');
-    const [transactions, setTransactions] = useState([]);
-    const [editingTransactionId, setEditingTransactionId] = useState(null);
+    type Transaction = {
+        id: string;
+        type: string;
+        amount: number;
+        timestamp?: { toDate: () => Date };
+        note?: string;
+        [key: string]: any;
+    };
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
     const [editTransactionAmount, setEditTransactionAmount] = useState('');
     const [editTransactionNote, setEditTransactionNote] = useState('');
 
+    const [llmLoading, setLlmLoading] = useState(false);
+    const [llmInsights, setLlmInsights] = useState('');
+
+    const [showCapitalManagementModal, setShowCapitalManagementModal] = useState(false);
+    const [showDailyProfitExpectationModal, setShowDailyProfitExpectationModal] = useState(false);
+    const [showWeeklyProfitExpectationModal, setShowWeeklyProfitExpectationModal] = useState(false);
+
+    const [currentPage, setCurrentPage] = useState('Dashboard');
 
     const [dailyProfitExpectation, setDailyProfitExpectation] = useState(0);
     const [newDailyProfitExpectation, setNewDailyProfitExpectation] = useState('');
     const [weeklyProfitExpectation, setWeeklyProfitExpectation] = useState(0);
     const [newWeeklyProfitExpectation, setNewWeeklyProfitExpectation] = useState('');
 
-
-    const [editingTradeId, setEditingTradeId] = useState(null);
+    const [editingTradeId, setEditingTradeId] = useState<string | null>(null);
     const [editTradeData, setEditTradeData] = useState({
-        asset: '', direction: '', entryPrice: '', expiryPrice: '',
-        openTime: '', expirationTime: '', outcome: '', amount: '', profit: '', notes: ''
+        date: '', // New: for editing the trade date (YYYY-MM-DD string)
+        asset: '',
+        direction: 'Buy',
+        numberOfTrades: '', // New
+        tradeDuration: '', // New
+        tradeStartTime: '', // New
+        tradeStopTime: '', // New
+        outcome: 'Win',
+        amount: '',
+        profit: '',
+        notes: ''
     });
 
-    const [currentMonth, setCurrentMonth] = useState(new Date());
-    const [dailyStats, setDailyStats] = useState({});
-    const [weeklySummaries, setWeeklySummaries] = useState([]);
-    const [monthlySummary, setMonthlySummary] = useState({ totalProfitLoss: 0, totalTrades: 0 });
-    const [goalHistory, setGoalHistory] = useState([]);
-    const [editingJournalId, setEditingJournalId] = useState(null);
+    type Goal = {
+        id: string;
+        type: string;
+        periodStart?: { toDate: () => Date };
+        periodEnd?: { toDate: () => Date };
+        goalAmount?: number;
+        actualProfit?: number;
+        achieved?: boolean;
+        [key: string]: unknown;
+    };
+    const [goalHistory, setGoalHistory] = useState<Goal[]>([]);
+
+    const [showAddJournalModal, setShowAddJournalModal] = useState(false);
+    const [newJournalName, setNewJournalName] = useState('');
+    const [editingJournalId, setEditingJournalId] = useState<string | null>(null);
     const [editJournalName, setEditJournalName] = useState('');
 
+    // Fetch journals and set current journal
+    const handleCreateJournal = async (name = newJournalName) => {
+        if (!db || !userId) { showMessageBox("Database not ready."); return; }
+        const trimmedName = name.trim();
+        if (!trimmedName) { showMessageBox("Journal name cannot be empty."); return; }
 
-    const userId = user?.uid;
-    const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || 'defaultAppId';
+        try {
+            const journalsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/journals`);
+            const newJournalRef = await addDoc(journalsCollectionRef, {
+                name: trimmedName,
+                createdAt: serverTimestamp(),
+                lastAccessedAt: serverTimestamp()
+            });
+            // Automatically select the new journal
+            setCurrentJournalId(newJournalRef.id);
+            setCurrentJournalName(trimmedName);
+            // Initialize sub-documents for the new journal
+            const journalPath = `artifacts/${appId}/users/${userId}/journals/${newJournalRef.id}`;
+            await setDoc(doc(db, `${journalPath}/userProfile/balance`), { currentBalance: 0, lastUpdated: serverTimestamp() }, { merge: true });
+            await setDoc(doc(db, `${journalPath}/userProfile/dailyProfitExpectation`), { amount: 0, lastUpdated: serverTimestamp() }, { merge: true });
+            await setDoc(doc(db, `${journalPath}/userProfile/weeklyProfitExpectation`), { amount: 0, lastUpdated: serverTimestamp() }, { merge: true });
 
-    // const toggleTheme = () => {
-    //     setTheme(theme === 'dark' ? 'light' : 'dark');
-    // };
+            setNewJournalName('');
+            setShowAddJournalModal(false);
+            showMessageBox(`Journal "${trimmedName}" created successfully!`);
+        } catch (error) {
+            console.error("Error creating journal:", error);
+            showMessageBox("Failed to create journal. Please try again.");
+        }
+    };
 
-    const isDarkMode = theme === 'dark';
+    useEffect(() => {
+        if (db && userId) {
+            const journalsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/journals`);
+            const qJournals = query(journalsCollectionRef, orderBy('lastAccessedAt', 'desc'));
+
+            const unsubscribeJournals = onSnapshot(qJournals, async (snapshot) => {
+                const fetchedJournals = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        name: data.name || '',
+                        ...data
+                    };
+                });
+                setJournals(fetchedJournals);
+
+                if (fetchedJournals.length > 0 && currentJournalId === null) {
+                    const lastAccessedJournal = fetchedJournals[0];
+                    setCurrentJournalId(lastAccessedJournal.id);
+                    setCurrentJournalName(lastAccessedJournal.name);
+                    await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/journals`, lastAccessedJournal.id), {
+                        lastAccessedAt: serverTimestamp()
+                    });
+                } else if (fetchedJournals.length === 0 && currentJournalId === null) {
+                    await handleCreateJournal('My First Journal');
+                }
+            }, (error) => {
+                console.error("Error fetching journals:", error);
+            });
+
+            return () => unsubscribeJournals();
+        }
+    }, [userId, appId, currentJournalId, handleCreateJournal]);
+
+    // Fetch all data for the current journal
+    useEffect(() => {
+        if (db && userId && currentJournalId) {
+            setLoading(true);
+            const journalPath = `artifacts/${appId}/users/${userId}/journals/${currentJournalId}`;
+            let listenersCount = 0;
+            const totalListeners = 6; // trades, balance, transactions, dailyGoal, weeklyGoal, goalHistory
+
+            const checkAndSetLoaded = () => {
+                listenersCount++;
+                if (listenersCount >= totalListeners) { // Use >= just in case
+                    setLoading(false);
+                }
+            };
+
+            const tradesUnsubscribe = onSnapshot(query(collection(db, `${journalPath}/trades`), orderBy('timestamp', 'desc')), (snapshot) => {
+                setTrades(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as TradeWithId)));
+                checkAndSetLoaded();
+            }, (error) => { console.error("Error fetching trades:", error); checkAndSetLoaded(); });
+
+            const balanceUnsubscribe = onSnapshot(doc(db, `${journalPath}/userProfile/balance`), (docSnap) => {
+                if (docSnap.exists()) {
+                    setCurrentBalance(docSnap.data().currentBalance || 0);
+                } else {
+                    setDoc(doc(db, `${journalPath}/userProfile/balance`), { currentBalance: 0, lastUpdated: serverTimestamp() }, { merge: true });
+                    setCurrentBalance(0);
+                }
+                checkAndSetLoaded();
+            }, (error) => { console.error("Error fetching balance:", error); checkAndSetLoaded(); });
+
+            const transactionsUnsubscribe = onSnapshot(query(collection(db, `${journalPath}/transactions`), orderBy('timestamp', 'desc')), (snapshot) => {
+                setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+                checkAndSetLoaded();
+            }, (error) => { console.error("Error fetching transactions:", error); checkAndSetLoaded(); });
+
+            const dailyUnsubscribe = onSnapshot(doc(db, `${journalPath}/userProfile/dailyProfitExpectation`), (docSnap) => {
+                if (docSnap.exists()) {
+                    setDailyProfitExpectation(docSnap.data().amount || 0);
+                } else {
+                    setDoc(doc(db, `${journalPath}/userProfile/dailyProfitExpectation`), { amount: 0, lastUpdated: serverTimestamp() }, { merge: true });
+                    setDailyProfitExpectation(0);
+                }
+                checkAndSetLoaded();
+            }, (error) => { console.error("Error fetching daily profit expectation:", error); checkAndSetLoaded(); });
+
+            const weeklyUnsubscribe = onSnapshot(doc(db, `${journalPath}/userProfile/weeklyProfitExpectation`), (docSnap) => {
+                if (docSnap.exists()) {
+                    setWeeklyProfitExpectation(docSnap.data().amount || 0);
+                } else {
+                    setDoc(doc(db, `${journalPath}/userProfile/weeklyProfitExpectation`), { amount: 0, lastUpdated: serverTimestamp() }, { merge: true });
+                    setWeeklyProfitExpectation(0);
+                }
+                checkAndSetLoaded();
+            }, (error) => { console.error("Error fetching weekly profit expectation:", error); checkAndSetLoaded(); });
+
+            const goalsUnsubscribe = onSnapshot(query(collection(db, `${journalPath}/goals`), orderBy('periodEnd', 'desc')), (snapshot) => {
+                setGoalHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Goal)));
+                checkAndSetLoaded();
+            }, (error) => { console.error("Error fetching goal history:", error); checkAndSetLoaded(); });
+
+            return () => {
+                if (tradesUnsubscribe) tradesUnsubscribe();
+                if (balanceUnsubscribe) balanceUnsubscribe();
+                if (transactionsUnsubscribe) transactionsUnsubscribe();
+                if (dailyUnsubscribe) dailyUnsubscribe();
+                if (weeklyUnsubscribe) weeklyUnsubscribe();
+                if (goalsUnsubscribe) goalsUnsubscribe();
+            };
+        } else if (!currentJournalId) {
+            setLoading(false); // Not loading if no journal is selected
+            setTrades([]);
+            setTransactions([]);
+            setGoalHistory([]);
+            setCurrentBalance(0);
+        }
+    }, [db, userId, currentJournalId]);
+
+    // Goal Finalization Logic
+    useEffect(() => {
+        if (!db || !userId || !currentJournalId || trades.length === 0) return;
+
+        const finalizeGoals = async () => {
+            const now = new Date();
+            const goalsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/goals`);
+
+            // --- Daily Goal Finalization ---
+            const dailyGoalsSnapshot = await getDocs(query(goalsCollectionRef, orderBy('periodEnd', 'desc')));
+            const lastDailyGoalDoc = dailyGoalsSnapshot.docs.find(doc => doc.data().type === 'daily');
+            const lastDailyPeriodEnd = lastDailyGoalDoc ? lastDailyGoalDoc.data().periodEnd?.toDate() : null;
+
+            let checkDate = lastDailyPeriodEnd
+                ? startOfDay(new Date(lastDailyPeriodEnd.getTime() + 24 * 60 * 60 * 1000))
+                : startOfDay(trades.length > 0 && trades[trades.length - 1].timestamp?.toDate() ? trades[trades.length - 1].timestamp.toDate() : now);
+
+
+            while (checkDate < startOfDay(now)) {
+                const periodStart = startOfDay(checkDate);
+                const periodEnd = endOfDay(checkDate);
+
+                const existingGoal = goalHistory.some(
+                    g => g.type === 'daily' && g.periodStart && isSameDay(g.periodStart.toDate(), periodStart)
+                );
+
+                if (!existingGoal) {
+                    const dailyProfit = trades.reduce((sum, trade) => {
+                        const tradeDate = trade.timestamp && typeof trade.timestamp.toDate === 'function'
+                            ? trade.timestamp.toDate()
+                            : (typeof trade.timestamp === 'string' || typeof trade.timestamp === 'number'
+                                ? new Date(trade.timestamp)
+                                : null);
+                        if (tradeDate && isSameDay(tradeDate, periodStart)) {
+                            return sum + trade.profit;
+                        }
+                        return sum;
+                    }, 0);
+
+                    const achieved = dailyProfit >= dailyProfitExpectation;
+                    await addDoc(goalsCollectionRef, {
+                        type: 'daily', goalAmount: dailyProfitExpectation, actualProfit: dailyProfit,
+                        periodStart, periodEnd, achieved, timestamp: serverTimestamp()
+                    });
+                }
+                checkDate = startOfDay(new Date(checkDate.getTime() + 24 * 60 * 60 * 1000));
+            }
+
+            // --- Weekly Goal Finalization ---
+            const weeklyGoalsSnapshot = await getDocs(query(goalsCollectionRef, orderBy('periodEnd', 'desc')));
+            const lastWeeklyGoalDoc = weeklyGoalsSnapshot.docs.find(doc => doc.data().type === 'weekly');
+            const lastWeeklyPeriodEnd = lastWeeklyGoalDoc ? lastWeeklyGoalDoc.data().periodEnd?.toDate() : null;
+
+            let checkWeekDate = lastWeeklyPeriodEnd
+                ? startOfWeek(new Date(lastWeeklyPeriodEnd.getTime() + 7 * 24 * 60 * 60 * 1000))
+                : startOfWeek(trades.length > 0 && trades[trades.length - 1].timestamp?.toDate() ? trades[trades.length - 1].timestamp.toDate() : now);
+
+            while (checkWeekDate < startOfWeek(now)) {
+                const periodStart = startOfWeek(checkWeekDate);
+                const periodEnd = endOfWeek(checkWeekDate);
+
+                const existingGoal = goalHistory.some(
+                    g => g.type === 'weekly' && g.periodStart && isSameWeek(g.periodStart.toDate(), periodStart)
+                );
+
+                if (!existingGoal) {
+                    const weeklyProfit = trades.reduce((sum, trade) => {
+                        const tradeDate = trade.timestamp?.toDate
+                            ? trade.timestamp.toDate()
+                            : (typeof trade.timestamp === 'string' || typeof trade.timestamp === 'number'
+                                ? new Date(trade.timestamp)
+                                : null);
+                        if (tradeDate && tradeDate >= periodStart && tradeDate <= periodEnd) {
+                            return sum + trade.profit;
+                        }
+                        return sum;
+                    }, 0);
+
+                    const achieved = weeklyProfit >= weeklyProfitExpectation;
+                    await addDoc(goalsCollectionRef, {
+                        type: 'weekly', goalAmount: weeklyProfitExpectation, actualProfit: weeklyProfit,
+                        periodStart, periodEnd, achieved, timestamp: serverTimestamp()
+                    });
+                }
+                checkWeekDate = startOfWeek(new Date(checkWeekDate.getTime() + 7 * 24 * 60 * 60 * 1000));
+            }
+        };
+        finalizeGoals();
+    }, [userId, appId, currentJournalId, trades, dailyProfitExpectation, weeklyProfitExpectation, goalHistory]);
 
     const showMessageBox = (message: string) => {
         setModalMessage(message);
@@ -103,101 +356,82 @@ export default function Main() {
 
     const showConfirmationModal = (message: string, onConfirm: () => void) => {
         setModalMessage(message);
-        setModalConfirmAction(() => onConfirm);
+        setModalConfirmAction(() => onConfirm); // Ensure it's a function
         setShowModal(true);
     };
 
-    // Journal Management Functions (wrapped in useCallback for stability)
-    const handleCreateJournal = useCallback(async (name = newJournalName) => {
-        if (!db || !userId) { showMessageBox("Database not ready."); return; }
-        if (!name.trim()) { showMessageBox("Journal name cannot be empty."); return; }
 
-        try {
-            const journalsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/journals`);
-            const newJournalRef = await addDoc(journalsCollectionRef, {
-                name: name.trim(),
-                createdAt: serverTimestamp(),
-                lastAccessedAt: serverTimestamp()
-            });
-            if (!newJournalRef.id) {
-                showMessageBox("Failed to create journal. Please try again.");
-                return;
-            }
-            setCurrentJournalId(newJournalRef.id);
-            setCurrentJournalName(name.trim());
-            setNewJournalName('');
-            setShowAddJournalModal(false);
-            showMessageBox(`Journal "${name.trim()}" created successfully!`);
-        } catch (error) {
-            console.error("Error creating journal:", error);
-            showMessageBox("Failed to create journal. Please try again.");
-        }
-    }, [ userId, appId, newJournalName, showMessageBox]);
+    interface TradeData {
+        asset: string;
+        direction: string;
+        numberOfTrades: number;
+        tradeDuration: string;
+        tradeStartTime: string;
+        tradeStopTime: string;
+        outcome: string;
+        amount: number;
+        profit: number;
+        notes: string;
+        timestamp: Timestamp; // Firestore Timestamp
+    }
 
-    const handleSelectJournal = useCallback(async (journalId: string, journalName: string) => {
-        if (!db || !userId) return;
-        setCurrentJournalId(journalId);
-        setCurrentJournalName(journalName);
-        // Update lastAccessedAt for the selected journal
-        await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/journals`, journalId), {
-            lastAccessedAt: serverTimestamp()
-        });
-        showMessageBox(`Switched to journal: "${journalName}"`);
-        setCurrentPage('Dashboard'); // Go to dashboard after selecting a journal
-    }, [ userId, appId, showMessageBox]);
-
-    // Handle Trade Management
     const handleAddTrade = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!db || !userId || !currentJournalId) { showMessageBox("Please select a journal first."); return; }
-        if (!asset || !entryPrice || !expiryPrice || !amount || !profit || !openTime || !expirationTime) {
-            showMessageBox("Please fill in all required fields (Asset, Entry Price, Expiry Price, Amount, Profit/Loss, Open Time, Expiration Time).");
+        if (!tradeDate || !asset || !numberOfTrades || !tradeDuration || !tradeStartTime || !tradeStopTime || !amount || !profit) {
+            showMessageBox("Please fill in all required fields (Date, Asset, Number of Trades, Duration, Session Times, Amount, Profit/Loss).");
             return;
         }
 
-        const tradeProfit = parseFloat(profit);
-        const tradeAmount = parseFloat(amount);
-        const tradeExpiryPrice = parseFloat(expiryPrice);
+        const tradeProfitVal: number = parseFloat(profit);
+        const tradeAmountVal: number = parseFloat(amount);
+        const numTradesVal: number = parseInt(numberOfTrades);
 
-        if (isNaN(tradeProfit) || isNaN(tradeAmount) || isNaN(tradeExpiryPrice)) {
-            showMessageBox("Amount Invested, Profit/Loss, and Expiry Price must be valid numbers.");
+        if (isNaN(tradeProfitVal) || isNaN(tradeAmountVal) || isNaN(numTradesVal) || numTradesVal <= 0) {
+            showMessageBox("Amount, Profit/Loss, and Number of Trades must be valid positive numbers.");
             return;
         }
 
         try {
-            const tradeData = {
+            // Construct timestamp from tradeDate and tradeStartTime
+            const combinedDateTimeString: string = `${tradeDate}T${tradeStartTime}`;
+            const entryTimestamp: Timestamp = Timestamp.fromDate(new Date(combinedDateTimeString));
+
+            const tradeData: TradeData = {
                 asset,
                 direction,
-                entryPrice: parseFloat(entryPrice),
-                expiryPrice: tradeExpiryPrice,
-                openTime,
-                expirationTime,
+                numberOfTrades: numTradesVal,
+                tradeDuration,
+                tradeStartTime, // Session start time
+                tradeStopTime,  // Session stop time
                 outcome,
-                amount: tradeAmount,
-                profit: tradeProfit,
+                amount: tradeAmountVal, // Total amount for these N trades
+                profit: tradeProfitVal, // Total profit for these N trades
                 notes,
-                timestamp: serverTimestamp()
+                timestamp: entryTimestamp // Firestore Timestamp based on tradeDate and tradeStartTime
             };
             const tradesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/trades`);
             await addDoc(tradesCollectionRef, tradeData);
 
             const balanceDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/userProfile/balance`);
-            await setDoc(balanceDocRef, { currentBalance: currentBalance + tradeProfit, lastUpdated: serverTimestamp() }, { merge: true });
+            await setDoc(balanceDocRef, { currentBalance: currentBalance + tradeProfitVal, lastUpdated: serverTimestamp() }, { merge: true });
 
-            setAsset(''); setDirection('Buy'); setEntryPrice('');
-            setExpiryPrice('');
-            setOpenTime(''); setExpirationTime('');
+            // Reset form fields
+            setTradeDate(formatDateForInput(new Date())); setAsset(''); setDirection('Buy');
+            setNumberOfTrades(''); setTradeDuration('');
+            setTradeStartTime(''); setTradeStopTime('');
             setOutcome('Win'); setAmount(''); setProfit(''); setNotes('');
-            showMessageBox("Trade added successfully and balance updated!");
+            showMessageBox("Trade session added successfully and balance updated!");
         } catch (error) {
-            console.error("Error adding trade:", error);
-            showMessageBox("Failed to add trade. Please try again.");
+            console.error("Error adding trade session:", error);
+            const errorMsg = (error instanceof Error) ? error.message : String(error);
+            showMessageBox("Failed to add trade session. Please try again. Error: " + errorMsg);
         }
     };
-    
+
     const handleDeleteTrade = (tradeId: string) => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Database not ready or no journal selected."); return; }
-        showConfirmationModal("Are you sure you want to delete this trade? This will also reverse its impact on your balance.", async () => {
+        showConfirmationModal("Are you sure you want to delete this trade entry? This will also reverse its impact on your balance.", async () => {
             try {
                 const tradeToDelete = trades.find(trade => trade.id === tradeId);
                 if (!tradeToDelete) { showMessageBox("Trade not found."); return; }
@@ -207,85 +441,100 @@ export default function Main() {
 
                 const balanceDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/userProfile/balance`);
                 await setDoc(balanceDocRef, { currentBalance: currentBalance - tradeToDelete.profit, lastUpdated: serverTimestamp() }, { merge: true });
-                showMessageBox("Trade deleted successfully and balance updated!");
+                showMessageBox("Trade entry deleted successfully and balance updated!");
             } catch (error) {
                 console.error("Error deleting trade:", error);
                 showMessageBox("Failed to delete trade. Please try again.");
             } finally { setShowModal(false); }
         });
     };
-    
-    const startEditingTrade = (trade) => {
+
+    interface TradeWithId extends TradeData {
+        id: string;
+        [key: string]: unknown;
+    }
+
+    const startEditingTrade = (trade: TradeWithId) => {
         setEditingTradeId(trade.id);
         setEditTradeData({
-            asset: trade.asset,
-            direction: trade.direction,
-            entryPrice: trade.entryPrice,
-            expiryPrice: trade.expiryPrice,
-            openTime: trade.openTime,
-            expirationTime: trade.expirationTime,
-            outcome: trade.outcome,
-            amount: trade.amount,
-            profit: trade.profit,
-            notes: trade.notes
+            date: trade.timestamp ? formatDateForInput(trade.timestamp.toDate()) : '',
+            asset: trade.asset || '',
+            direction: trade.direction || 'Buy',
+            numberOfTrades: trade.numberOfTrades !== undefined && trade.numberOfTrades !== null ? trade.numberOfTrades.toString() : '',
+            tradeDuration: trade.tradeDuration || '',
+            tradeStartTime: trade.tradeStartTime || '',
+            tradeStopTime: trade.tradeStopTime || '',
+            outcome: trade.outcome || 'Win',
+            amount: trade.amount !== undefined && trade.amount !== null ? String(trade.amount) : '',
+            profit: trade.profit !== undefined && trade.profit !== null ? String(trade.profit) : '',
+            notes: trade.notes || ''
         });
     };
-    
+
     const cancelEditingTrade = () => {
         setEditingTradeId(null);
+        // Reset editTradeData to initial empty/default values
         setEditTradeData({
-            asset: '', direction: '', entryPrice: '', expiryPrice: '',
-            openTime: '', expirationTime: '', outcome: '', amount: '', profit: '', notes: ''
+            date: '', asset: '', direction: 'Buy', numberOfTrades: '', tradeDuration: '',
+            tradeStartTime: '', tradeStopTime: '', outcome: 'Win', amount: '', profit: '', notes: ''
         });
     };
-    
-    const saveEditingTrade = async (tradeId) => {
+
+    const saveEditingTrade = async (tradeId: string) => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Database not ready or no journal selected."); return; }
         const originalTrade = trades.find(trade => trade.id === tradeId);
         if (!originalTrade) { showMessageBox("Original trade not found."); return; }
 
         const updatedProfit = parseFloat(editTradeData.profit);
         const updatedAmount = parseFloat(editTradeData.amount);
-        const updatedEntryPrice = parseFloat(editTradeData.entryPrice);
-        const updatedExpiryPrice = parseFloat(editTradeData.expiryPrice);
+        const updatedNumberOfTrades = parseInt(editTradeData.numberOfTrades);
 
-        if (isNaN(updatedProfit) || isNaN(updatedAmount) || isNaN(updatedEntryPrice) || isNaN(updatedExpiryPrice)) {
-            showMessageBox("Amount Invested, Profit/Loss, Entry Price, and Expiry Price must be valid numbers.");
+        if (isNaN(updatedProfit) || isNaN(updatedAmount) || isNaN(updatedNumberOfTrades) || updatedNumberOfTrades <= 0) {
+            showMessageBox("Amount, Profit/Loss, and Number of Trades must be valid positive numbers.");
+            return;
+        }
+        if (!editTradeData.date || !editTradeData.tradeStartTime) {
+            showMessageBox("Date and Trade Start Time are required for editing.");
             return;
         }
 
-        showConfirmationModal("Are you sure you want to save changes to this trade? This will adjust your balance.", async () => {
+        showConfirmationModal("Are you sure you want to save changes to this trade entry? This will adjust your balance.", async () => {
             try {
                 const profitDifference = updatedProfit - originalTrade.profit;
+
+                // Construct new timestamp from edited date and start time
+                const combinedDateTimeString = `${editTradeData.date}T${editTradeData.tradeStartTime}`;
+                const newTimestamp = Timestamp.fromDate(new Date(combinedDateTimeString));
 
                 const tradeDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/trades`, tradeId);
                 await updateDoc(tradeDocRef, {
                     asset: editTradeData.asset,
                     direction: editTradeData.direction,
-                    entryPrice: updatedEntryPrice,
-                    expiryPrice: updatedExpiryPrice,
-                    openTime: editTradeData.openTime,
-                    expirationTime: editTradeData.expirationTime,
+                    numberOfTrades: updatedNumberOfTrades,
+                    tradeDuration: editTradeData.tradeDuration,
+                    tradeStartTime: editTradeData.tradeStartTime,
+                    tradeStopTime: editTradeData.tradeStopTime,
                     outcome: editTradeData.outcome,
                     amount: updatedAmount,
                     profit: updatedProfit,
                     notes: editTradeData.notes,
-                    timestamp: serverTimestamp()
+                    timestamp: newTimestamp // Update the timestamp
                 });
 
                 const balanceDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/userProfile/balance`);
                 await setDoc(balanceDocRef, { currentBalance: currentBalance + profitDifference, lastUpdated: serverTimestamp() }, { merge: true });
 
-                showMessageBox("Trade updated successfully and balance adjusted!");
+                showMessageBox("Trade entry updated successfully and balance adjusted!");
                 cancelEditingTrade();
             } catch (error) {
                 console.error("Error saving trade:", error);
-                showMessageBox("Failed to save trade. Please try again.");
+                const errorMsg = (error instanceof Error) ? error.message : String(error);
+                showMessageBox("Failed to save trade. Please try again. Error: " + errorMsg);
             } finally { setShowModal(false); }
         });
     };
 
-    // Transactions 
+
     const handleDeposit = async () => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Please select a journal first."); return; }
         const depositVal = parseFloat(depositAmount);
@@ -307,7 +556,7 @@ export default function Main() {
             } finally { setShowModal(false); }
         });
     };
-    
+
     const handleWithdraw = async () => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Please select a journal first."); return; }
         const withdrawVal = parseFloat(withdrawAmount);
@@ -330,34 +579,26 @@ export default function Main() {
             } finally { setShowModal(false); }
         });
     };
-    
+
     const handleResetJournal = async () => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Please select a journal first."); return; }
         showConfirmationModal("Are you sure you want to reset the CURRENT journal? This will delete all trades, transactions, and reset its balance to zero. This action cannot be undone.", async () => {
             try {
                 const batch = writeBatch(db);
-
                 const journalPath = `artifacts/${appId}/users/${userId}/journals/${currentJournalId}`;
+                const subcollectionsToDelete = ['trades', 'transactions', 'goals', 'userProfile'];
 
-                // Delete trades
-                const tradesSnapshot = await getDocs(collection(db, `${journalPath}/trades`));
-                tradesSnapshot.docs.forEach(d => batch.delete(d.ref));
+                for (const subColName of subcollectionsToDelete) {
+                    const subCollectionRef = collection(db, `${journalPath}/${subColName}`);
+                    const snapshot = await getDocs(subCollectionRef);
+                    snapshot.docs.forEach(d => batch.delete(d.ref));
+                }
+                // Re-initialize balance and goals after deleting them.
+                batch.set(doc(db, `${journalPath}/userProfile/balance`), { currentBalance: 0, lastUpdated: serverTimestamp() }, { merge: true });
+                batch.set(doc(db, `${journalPath}/userProfile/dailyProfitExpectation`), { amount: 0, lastUpdated: serverTimestamp() }, { merge: true });
+                batch.set(doc(db, `${journalPath}/userProfile/weeklyProfitExpectation`), { amount: 0, lastUpdated: serverTimestamp() }, { merge: true });
 
-                // Delete transactions
-                const transactionsSnapshot = await getDocs(collection(db, `${journalPath}/transactions`));
-                transactionsSnapshot.docs.forEach(d => batch.delete(d.ref));
-
-                // Delete goals
-                const goalsSnapshot = await getDocs(collection(db, `${journalPath}/goals`));
-                goalsSnapshot.docs.forEach(d => batch.delete(d.ref));
-
-                // Reset balance
-                const balanceDocRef = doc(db, `${journalPath}/userProfile/balance`);
-                batch.set(balanceDocRef, { currentBalance: 0, lastUpdated: serverTimestamp() }, { merge: true });
-
-                // Commit the batch
                 await batch.commit();
-
                 showMessageBox("Current journal reset successfully!");
             } catch (error) {
                 console.error("Error resetting journal:", error);
@@ -365,8 +606,8 @@ export default function Main() {
             } finally { setShowModal(false); }
         });
     };
-    
-    const startEditingTransaction = (transaction) => {
+
+    const startEditingTransaction = (transaction: Transaction) => {
         setEditingTransactionId(transaction.id);
         setEditTransactionAmount(transaction.amount.toString());
         setEditTransactionNote(transaction.note || '');
@@ -377,8 +618,8 @@ export default function Main() {
         setEditTransactionAmount('');
         setEditTransactionNote('');
     };
-    
-    const saveEditingTransaction = async (transactionId) => {
+
+    const saveEditingTransaction = async (transactionId: string) => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Database not ready or no journal selected."); return; }
         const newAmount = parseFloat(editTransactionAmount);
         if (isNaN(newAmount) || newAmount <= 0) {
@@ -408,7 +649,7 @@ export default function Main() {
                 await updateDoc(transactionDocRef, {
                     amount: newAmount,
                     note: editTransactionNote,
-                    timestamp: serverTimestamp()
+                    timestamp: serverTimestamp() // Keep original timestamp or update? Let's update.
                 });
 
                 const balanceDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/userProfile/balance`);
@@ -423,7 +664,7 @@ export default function Main() {
         });
     };
 
-    const deleteTransaction = (transactionId) => {
+    const deleteTransaction = (transactionId: string) => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Database not ready or no journal selected."); return; }
         showConfirmationModal("Are you sure you want to delete this transaction? This will reverse its impact on your balance.", async () => {
             try {
@@ -447,7 +688,7 @@ export default function Main() {
             } finally { setShowModal(false); }
         });
     };
-    
+
     const handleSaveDailyProfitExpectation = async () => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Please select a journal first."); return; }
         const expectation = parseFloat(newDailyProfitExpectation);
@@ -459,7 +700,7 @@ export default function Main() {
         try {
             const dailyProfitExpectationDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/userProfile/dailyProfitExpectation`);
             await setDoc(dailyProfitExpectationDocRef, { amount: expectation, lastUpdated: serverTimestamp() }, { merge: true });
-            setDailyProfitExpectation(expectation);
+            // setDailyProfitExpectation(expectation); // This will be updated by onSnapshot
             setNewDailyProfitExpectation('');
             showMessageBox("Daily profit expectation saved successfully!");
             setShowDailyProfitExpectationModal(false);
@@ -468,7 +709,7 @@ export default function Main() {
             showMessageBox("Failed to save daily profit expectation. Please try again.");
         }
     };
-    
+
     const handleSaveWeeklyProfitExpectation = async () => {
         if (!db || !userId || !currentJournalId) { showMessageBox("Please select a journal first."); return; }
         const expectation = parseFloat(newWeeklyProfitExpectation);
@@ -480,7 +721,7 @@ export default function Main() {
         try {
             const weeklyProfitExpectationDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals/${currentJournalId}/userProfile/weeklyProfitExpectation`);
             await setDoc(weeklyProfitExpectationDocRef, { amount: expectation, lastUpdated: serverTimestamp() }, { merge: true });
-            setWeeklyProfitExpectation(expectation);
+            // setWeeklyProfitExpectation(expectation); // This will be updated by onSnapshot
             setNewWeeklyProfitExpectation('');
             showMessageBox("Weekly profit expectation saved successfully!");
             setShowWeeklyProfitExpectationModal(false);
@@ -491,89 +732,157 @@ export default function Main() {
     };
 
     const calculateStats = useCallback(() => {
-        let totalAmount = 0;
+        let totalAmountInvested = 0;
         let totalProfitLoss = 0;
         let winCount = 0;
         let lossCount = 0;
         let totalWinProfit = 0;
         let totalLossAmount = 0;
+        let totalTradesCount = 0; // Sum of numberOfTrades from each entry
 
         trades.forEach(trade => {
-            totalAmount += trade.amount;
-            totalProfitLoss += trade.profit;
+            totalAmountInvested += trade.amount; // This is total amount for the entry
+            totalProfitLoss += trade.profit;   // This is total profit for the entry
+            totalTradesCount += (trade.numberOfTrades || 1); // Sum up actual trades
+
+            // Assuming 'outcome' applies to the batch of trades in the entry
             if (trade.outcome === 'Win') {
-                winCount++;
+                winCount += (trade.numberOfTrades || 1); // Count individual wins
                 totalWinProfit += trade.profit;
             } else if (trade.outcome === 'Loss') {
-                lossCount++;
+                lossCount += (trade.numberOfTrades || 1); // Count individual losses
                 totalLossAmount += Math.abs(trade.profit);
             }
         });
 
-        const totalTrades = trades.length;
-        const winRate = totalTrades > 0 ? (winCount / totalTrades) * 100 : 0;
-        const averageProfitPerWin = winCount > 0 ? (totalWinProfit / winCount) : 0;
-        const averageLossPerLoss = lossCount > 0 ? (totalLossAmount / lossCount) : 0;
+        const overallTotalTrades = winCount + lossCount; // More accurate total for win rate
+        const winRate = overallTotalTrades > 0 ? (winCount / overallTotalTrades) * 100 : 0;
+        const averageProfitPerWinningSession = trades.filter(t => t.outcome === 'Win').length > 0 ? totalWinProfit / trades.filter(t => t.outcome === 'Win').length : 0;
+        const averageLossPerLosingSession = trades.filter(t => t.outcome === 'Loss').length > 0 ? totalLossAmount / trades.filter(t => t.outcome === 'Loss').length : 0;
         const profitFactor = totalLossAmount > 0 ? (totalWinProfit / totalLossAmount) : (totalWinProfit > 0 ? Infinity : 0);
 
         return {
-            totalAmount: totalAmount.toFixed(2),
+            totalAmountInvested: totalAmountInvested.toFixed(2),
             totalProfitLoss: totalProfitLoss.toFixed(2),
             winRate: winRate.toFixed(2),
-            totalTrades,
-            winCount,
-            lossCount,
-            averageProfitPerWin: averageProfitPerWin.toFixed(2),
-            averageLossPerLoss: averageLossPerLoss.toFixed(2),
+            totalTradeEntries: trades.length, // Number of log entries
+            totalIndividualTrades: totalTradesCount, // Total actual trades
+            winCount, // Individual wins
+            lossCount, // Individual losses
+            averageProfitPerWinningSession: averageProfitPerWinningSession.toFixed(2),
+            averageLossPerLosingSession: averageLossPerLosingSession.toFixed(2),
             profitFactor: profitFactor === Infinity ? 'N/A' : profitFactor.toFixed(2)
         };
     }, [trades]);
-    
+
+
     const stats = calculateStats();
 
     const currentDayProfit = useMemo(() => {
-        const today = formatYYYYMMDD(new Date());
+        const todayFormatted = formatYYYYMMDD(new Date());
         return trades.reduce((sum, trade) => {
-            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : new Date(trade.timestamp);
-            if (formatYYYYMMDD(tradeDate) === today) {
+            const tradeDateFormatted = trade.timestamp ? formatYYYYMMDD(trade.timestamp.toDate()) : '';
+            if (tradeDateFormatted === todayFormatted) {
                 return sum + trade.profit;
             }
             return sum;
         }, 0);
     }, [trades]);
-    
+
     const currentWeekProfit = useMemo(() => {
         const now = new Date();
         const startOfCurrentWeek = startOfWeek(now);
         const endOfCurrentWeek = endOfWeek(now);
 
         return trades.reduce((sum, trade) => {
-            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : new Date(trade.timestamp);
-            if (tradeDate >= startOfCurrentWeek && tradeDate <= endOfCurrentWeek) {
+            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : null;
+            if (tradeDate && tradeDate >= startOfCurrentWeek && tradeDate <= endOfCurrentWeek) {
                 return sum + trade.profit;
             }
             return sum;
         }, 0);
     }, [trades]);
 
+
+    useEffect(() => {
+        type DailyStat = { totalTrades: number; totalProfitLoss: number; tradeCount: number };
+        const newDailyStats: { [dateKey: string]: DailyStat } = {};
+        const monthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+        const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+        monthEnd.setHours(23, 59, 59, 999); // Ensure it covers the whole last day
+
+        trades.forEach(trade => {
+            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : null;
+            if (tradeDate && tradeDate >= monthStart && tradeDate <= monthEnd) {
+                const dateKey = formatYYYYMMDD(tradeDate);
+                if (!newDailyStats[dateKey]) { newDailyStats[dateKey] = { totalTrades: 0, totalProfitLoss: 0, tradeCount: 0 }; }
+                newDailyStats[dateKey].totalTrades += (trade.numberOfTrades || 1);
+                newDailyStats[dateKey].totalProfitLoss += trade.profit;
+                newDailyStats[dateKey].tradeCount += 1; // Number of entries for the day
+            }
+        });
+        setDailyStats(newDailyStats);
+
+        let currentMonthProfitLoss = 0;
+        let currentMonthTrades = 0; // Total individual trades for the month
+        const newWeeklySummaries: WeeklySummary[] = [];
+        let currentWeekProfitLoss = 0;
+        let currentWeekTrades = 0; // Total individual trades for the week
+        let weekStartDate: Date | null = null;
+
+        const allDaysInMonth = getDaysInMonth(currentMonth).filter(day => day !== null);
+
+        allDaysInMonth.forEach((day, index) => {
+            const dateKey = formatYYYYMMDD(day);
+            const dayStatsData = newDailyStats[dateKey] || { totalTrades: 0, totalProfitLoss: 0 };
+
+            currentMonthProfitLoss += dayStatsData.totalProfitLoss;
+            currentMonthTrades += dayStatsData.totalTrades;
+
+            if (weekStartDate === null) { weekStartDate = day; }
+            currentWeekProfitLoss += dayStatsData.totalProfitLoss;
+            currentWeekTrades += dayStatsData.totalTrades;
+
+            if (day.getDay() === 6 || index === allDaysInMonth.length - 1) { // Saturday or last day of month
+                newWeeklySummaries.push({
+                    startDate: formatYYYYMMDD(weekStartDate),
+                    endDate: formatYYYYMMDD(day),
+                    totalProfitLoss: currentWeekProfitLoss.toFixed(2),
+                    totalTrades: currentWeekTrades
+                });
+                currentWeekProfitLoss = 0;
+                currentWeekTrades = 0;
+                weekStartDate = null; // Reset for next week
+            }
+        });
+
+        setWeeklySummaries(newWeeklySummaries);
+        setMonthlySummary({ totalProfitLoss: Number(currentMonthProfitLoss.toFixed(2)), totalTrades: currentMonthTrades });
+
+    }, [trades, currentMonth]);
+
     const handlePrevMonth = () => { setCurrentMonth(prevMonth => new Date(prevMonth.getFullYear(), prevMonth.getMonth() - 1, 1)); };
     const handleNextMonth = () => { setCurrentMonth(prevMonth => new Date(prevMonth.getFullYear(), prevMonth.getMonth() + 1, 1)); };
-    
-        
-    const daysInMonth = getDaysInMonth(currentMonth);
-    
+
+    // const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    // const daysInMonth = getDaysInMonth(currentMonth);
+
     const cumulativeProfitLossChartData = useMemo(() => {
-        const dailyProfits = {};
-        trades.forEach(trade => {
-            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : new Date(trade.timestamp);
+        const dailyProfits: { [dateKey: string]: number } = {};
+        // Sort trades by timestamp to ensure correct cumulative calculation
+        const sortedTrades = [...trades].sort((a, b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
+
+        sortedTrades.forEach(trade => {
+            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : null;
+            if (!tradeDate) return;
             const dateKey = formatYYYYMMDD(tradeDate);
             if (!dailyProfits[dateKey]) { dailyProfits[dateKey] = 0; }
             dailyProfits[dateKey] += trade.profit;
         });
 
-        const sortedDates = Object.keys(dailyProfits).sort();
+        const sortedDates = Object.keys(dailyProfits).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
         let cumulativeProfit = 0;
-        const data = [];
+        const data: { date: string; 'Cumulative Profit': number }[] = [];
 
         sortedDates.forEach(date => {
             cumulativeProfit += dailyProfits[date];
@@ -581,25 +890,39 @@ export default function Main() {
         });
         return data;
     }, [trades]);
-    
-    const dailyProfitLossBarChartData = useMemo(() => {
-        const dailyData = {};
+
+
+    const dailyProfitLossBarChartData = useMemo<{ date: string; profit: number }[]>(() => {
+        const dailyData: { [date: string]: { date: string; profit: number } } = {};
         trades.forEach(trade => {
-            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : new Date(trade.timestamp);
+            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : null;
+            if (!tradeDate) return;
             const dateKey = formatYYYYMMDD(tradeDate);
             if (!dailyData[dateKey]) { dailyData[dateKey] = { date: dateKey, profit: 0 }; }
             dailyData[dateKey].profit += trade.profit;
         });
-        return Object.values(dailyData).sort((a, b) => new Date(a.date) - new Date(b.date));
+        return Object.values(dailyData).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [trades]);
-    
+
     const winRateByAssetData = useMemo(() => {
-        const assetStats = {};
+        type AssetStats = {
+            wins: number;
+            losses: number;
+            draws: number;
+            total: number;
+            totalProfit: number;
+        };
+        const assetStats: { [assetName: string]: AssetStats } = {};
         trades.forEach(trade => {
             const assetName = trade.asset || 'Unknown';
-            if (!assetStats[assetName]) { assetStats[assetName] = { wins: 0, losses: 0, draws: 0, total: 0 }; }
-            assetStats[assetName].total++;
-            if (trade.outcome === 'Win') { assetStats[assetName].wins++; } else if (trade.outcome === 'Loss') { assetStats[assetName].losses++; } else { assetStats[assetName].draws++; }
+            if (!assetStats[assetName]) { assetStats[assetName] = { wins: 0, losses: 0, draws: 0, total: 0, totalProfit: 0 }; }
+            const numTradesInEntry = trade.numberOfTrades || 1;
+            assetStats[assetName].total += numTradesInEntry;
+            assetStats[assetName].totalProfit += trade.profit;
+
+            if (trade.outcome === 'Win') { assetStats[assetName].wins += numTradesInEntry; }
+            else if (trade.outcome === 'Loss') { assetStats[assetName].losses += numTradesInEntry; }
+            else { assetStats[assetName].draws += numTradesInEntry; }
         });
 
         return Object.keys(assetStats).map(assetName => ({
@@ -608,73 +931,175 @@ export default function Main() {
             losses: assetStats[assetName].losses,
             draws: assetStats[assetName].draws,
             total: assetStats[assetName].total,
+            totalProfit: assetStats[assetName].totalProfit,
             winRate: assetStats[assetName].total > 0 ? (assetStats[assetName].wins / assetStats[assetName].total * 100).toFixed(2) : 0
         }));
     }, [trades]);
-    
+
     const winRateByDirectionData = useMemo(() => {
-        const directionStats = { 'Buy': { wins: 0, losses: 0, draws: 0, total: 0 }, 'Sell': { wins: 0, losses: 0, draws: 0, total: 0 } };
+        const directionStats = { 'Buy': { wins: 0, losses: 0, draws: 0, total: 0, totalProfit: 0 }, 'Sell': { wins: 0, losses: 0, draws: 0, total: 0, totalProfit: 0 } };
         trades.forEach(trade => {
-            const directionName = trade.direction || 'Unknown';
-            if (directionStats[directionName]) {
-                directionStats[directionName].total++;
-                if (trade.outcome === 'Win') { directionStats[directionName].wins++; } else if (directionStats[directionName].losses) { directionStats[directionName].losses++; } else { directionStats[directionName].draws++; }
+            const directionName = trade.direction as 'Buy' | 'Sell';
+            if (directionName === 'Buy' || directionName === 'Sell') {
+                const numTradesInEntry = trade.numberOfTrades || 1;
+                directionStats[directionName].total += numTradesInEntry;
+                directionStats[directionName].totalProfit += trade.profit;
+                if (trade.outcome === 'Win') { directionStats[directionName].wins += numTradesInEntry; }
+                else if (trade.outcome === 'Loss') { directionStats[directionName].losses += numTradesInEntry; }
+                else { directionStats[directionName].draws += numTradesInEntry; }
             }
         });
 
-        return Object.keys(directionStats).map(directionName => ({
+        return (Object.keys(directionStats) as Array<'Buy' | 'Sell'>).map((directionName) => ({
             name: directionName,
             wins: directionStats[directionName].wins,
             losses: directionStats[directionName].losses,
             draws: directionStats[directionName].draws,
             total: directionStats[directionName].total,
+            totalProfit: directionStats[directionName].totalProfit,
             winRate: directionStats[directionName].total > 0 ? (directionStats[directionName].wins / directionStats[directionName].total * 100).toFixed(2) : 0
         })).filter(d => d.total > 0);
     }, [trades]);
 
+
     const profitLossDistributionData = useMemo(() => {
-        const bins = {
-            '<-$100': 0, '-$100 to -$50': 0, '-$50 to $0': 0, '$0 to $50': 0, '$50 to $100': 0, '>$100': 0,
-        };
+        // This chart might be less relevant now as 'profit' is per session, not per individual trade.
+        // For now, let's base it on the session profit.
+        const bins = { '< -$100': 0, '-$100 to -$50': 0, '-$50 to $0': 0, '$0 to $50': 0, '$50 to $100': 0, '> $100': 0 };
         trades.forEach(trade => {
-            const profitVal = trade.profit;
-            if (profitVal < -100) { bins['<-$100']++; } else if (profitVal >= -100 && profitVal < -50) { bins['-$100 to -$50']++; } else if (profitVal >= -50 && profitVal < 0) { bins['-$50 to $0']++; } else if (profitVal >= 0 && profitVal < 50) { bins['$0 to $50']++; } else if (profitVal >= 50 && profitVal < 100) { bins['$50 to $100']++; } else if (profitVal >= 100) { bins['>$100']++; }
+            const profitVal = trade.profit; // Session profit
+            if (profitVal < -100) bins['< -$100']++;
+            else if (profitVal < -50) bins['-$100 to -$50']++;
+            else if (profitVal < 0) bins['-$50 to $0']++;
+            else if (profitVal < 50) bins['$0 to $50']++;
+            else if (profitVal < 100) bins['$50 to $100']++;
+            else bins['> $100']++;
         });
-        return Object.keys(bins).map(range => ({ range: range, count: bins[range] })).filter(b => b.count > 0);
+        return Object.entries(bins).map(([range, count]) => ({ range, count })).filter(b => b.count > 0);
     }, [trades]);
-    
+
     const tradeCountByDayOfWeekData = useMemo(() => {
-        const dayCounts = [{ name: 'Sun', count: 0 }, { name: 'Mon', count: 0 }, { name: 'Tue', count: 0 }, { name: 'Wed', count: 0 }, { name: 'Thu', count: 0 }, { name: 'Fri', count: 0 }, { name: 'Sat', count: 0 },];
+        const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayCounts = Array(7).fill(0).map((_, i) => ({ name: weekdays[i], count: 0 }));
+        
         trades.forEach(trade => {
-            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : new Date(trade.timestamp);
-            const dayIndex = tradeDate.getDay();
-            dayCounts[dayIndex].count++;
+            const tradeDate = trade.timestamp?.toDate();
+            if (tradeDate) {
+                const dayIndex = tradeDate.getDay(); // 0 for Sun, 1 for Mon, ...
+                dayCounts[dayIndex].count += (trade.numberOfTrades || 1); // Sum of individual trades
+            }
         });
         return dayCounts.filter(d => d.count > 0);
     }, [trades]);
 
+
     const tradeCountByHourOfDayData = useMemo(() => {
         const hourCounts = Array.from({ length: 24 }, (_, i) => ({ name: `${String(i).padStart(2, '0')}:00`, count: 0 }));
         trades.forEach(trade => {
-            const tradeDate = trade.timestamp?.toDate ? trade.timestamp.toDate() : new Date(trade.timestamp);
-            const hour = tradeDate.getHours();
-            hourCounts[hour].count++;
+            // tradeStartTime is a string like "HH:MM". We need the hour part.
+            if (trade.tradeStartTime) {
+                const hour = parseInt(trade.tradeStartTime.split(':')[0]);
+                if (!isNaN(hour) && hour >= 0 && hour < 24) {
+                    hourCounts[hour].count += (trade.numberOfTrades || 1); // Sum of individual trades
+                }
+            }
         });
         return hourCounts.filter(h => h.count > 0);
     }, [trades]);
 
     const averageProfitLossData = useMemo(() => {
-        let totalWinProfit = 0; let winTradeCount = 0; let totalLossProfit = 0; let lossTradeCount = 0;
+        // This represents average profit/loss PER SESSION
+        let totalWinSessionProfit = 0; let winSessionCount = 0;
+        let totalLossSessionProfit = 0; let lossSessionCount = 0;
         trades.forEach(trade => {
-            if (trade.outcome === 'Win') { totalWinProfit += trade.profit; winTradeCount++; } else if (trade.outcome === 'Loss') { totalLossProfit += trade.profit; lossTradeCount++; }
+            if (trade.outcome === 'Win') { totalWinSessionProfit += trade.profit; winSessionCount++; }
+            else if (trade.outcome === 'Loss') { totalLossSessionProfit += trade.profit; lossSessionCount++; }
         });
-        const avgWin = winTradeCount > 0 ? (totalWinProfit / winTradeCount) : 0;
-        const avgLoss = lossTradeCount > 0 ? (totalLossProfit / lossTradeCount) : 0;
-        return [{ name: 'Average Win', value: parseFloat(avgWin.toFixed(2)) }, { name: 'Average Loss', value: parseFloat(avgLoss.toFixed(2)) }].filter(d => d.value !== 0);
+        const avgWinSession = winSessionCount > 0 ? (totalWinSessionProfit / winSessionCount) : 0;
+        const avgLossSession = lossSessionCount > 0 ? (totalLossSessionProfit / lossSessionCount) : 0; // Loss is negative
+        return [
+            { name: 'Average Win Session', value: parseFloat(avgWinSession.toFixed(2)) },
+            { name: 'Average Loss Session', value: parseFloat(avgLossSession.toFixed(2)) }
+        ].filter(d => d.value !== 0 || (d.name === 'Average Loss Session' && lossSessionCount > 0) || (d.name === 'Average Win Session' && winSessionCount > 0));
     }, [trades]);
 
-    
-    const exportToCsv = (data, filename) => {
+    // Function to get insights from LLM
+    const handleGetTradingInsights = async () => {
+        if (!userId || !currentJournalId) {
+            showMessageBox("Please select a journal to get insights.");
+            return;
+        }
+        setLlmLoading(true);
+        setLlmInsights('');
+
+        try {
+            const overallStats = calculateStats(); // Recalculate with new structure if needed
+            const assetPerformance = winRateByAssetData;
+            const directionPerformance = winRateByDirectionData;
+
+            const recentTradeNotes = trades.slice(0, 5).map((trade: TradeWithId) => ({
+                date: trade.timestamp ? formatYYYYMMDD(trade.timestamp.toDate()) : 'N/A',
+                asset: trade.asset,
+                numberOfTrades: trade.numberOfTrades,
+                outcome: trade.outcome,
+                totalProfit: trade.profit,
+                notes: trade.notes
+            }));
+
+            const prompt = `Analyze the following binary options trading data. Each entry might represent a session with multiple trades. Provide actionable insights, patterns, and suggestions.
+  
+            Overall Trading Statistics:
+            - Total Trade Entries (Sessions): ${overallStats.totalTradeEntries}
+            - Total Individual Trades: ${overallStats.totalIndividualTrades}
+            - Overall Win Rate (based on individual trades): ${overallStats.winRate}%
+            - Net Profit/Loss: $${overallStats.totalProfitLoss}
+            - Average Profit per Winning Session: $${overallStats.averageProfitPerWinningSession}
+            - Average Loss per Losing Session: $${overallStats.averageLossPerLosingSession}
+            - Profit Factor: ${overallStats.profitFactor}
+            
+            Performance by Asset (shows total individual trades and win rate for that asset):
+            ${assetPerformance.map(a => `- ${a.name}: ${a.winRate}% Win Rate, ${a.total} individual trades, Total P/L: $${a.totalProfit.toFixed(2)}`).join('\n')}
+            
+            Performance by Direction (Buy/Sell - shows total individual trades and win rate for that direction):
+            ${directionPerformance.map(d => `- ${d.name}: ${d.winRate}% Win Rate, ${d.total} individual trades, Total P/L: $${d.totalProfit.toFixed(2)}`).join('\n')}
+            
+            Recent Trade Session Notes (last 5 sessions, if available):
+            ${recentTradeNotes.length > 0 ? recentTradeNotes.map(trade => `  - Date: ${trade.date}, Asset: ${trade.asset}, Trades in Session: ${trade.numberOfTrades}, Outcome: ${trade.outcome}, Session Profit: $${trade.totalProfit.toFixed(2)}, Notes: "${trade.notes}"`).join('\n') : "No recent trade notes available."}
+            
+            Based on this data, provide:
+            1.  **Key Strengths and Weaknesses:** What are the most apparent positive and negative patterns in these trading sessions?
+            2.  **Actionable Strategy Adjustments:** What specific changes could be made to improve performance (e.g., focus on certain assets, times, durations)?
+            3.  **Risk Management Observations:** Any insights on risk based on session outcomes or amounts?
+            4.  **Emotional/Psychological Insights (from notes):** If notes suggest any emotional patterns, mention them.
+            5.  **Overall Recommendation:** A concise summary of advice for future trading sessions.
+            `;
+
+            // Use LangChain to call the Groq API
+            const response = await chat.invoke([new HumanMessage(prompt)]);
+
+            if (response.content) {
+                const text = typeof response.content === 'string'
+                    ? response.content
+                    : Array.isArray(response.content)
+                        ? response.content.map(part => typeof part === 'string' ? part : JSON.stringify(part)).join('\n')
+                        : String(response.content);
+                setLlmInsights(text);
+                showMessageBox("Trading Insights:\n\n" + text.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*/g, '-')); // Basic markdown cleanup for modal
+            } else {
+                console.error("Unexpected response structure:", response);
+                showMessageBox("Failed to get insights. Unexpected API response.");
+            }
+        } catch (error) {
+            console.error("Error calling Groq API:", error);
+            const errorMsg = (error instanceof Error) ? error.message : String(error);
+            showMessageBox("Failed to get insights. Error: " + errorMsg);
+        } finally {
+            setLlmLoading(false);
+        }
+  };
+
+
+    const exportToCsv = (data: Record<string, unknown>[], filename: string) => {
         if (!data || data.length === 0) {
             showMessageBox(`No data to export for ${filename}.`);
             return;
@@ -688,14 +1113,14 @@ export default function Main() {
             const values = headers.map(header => {
                 let value = row[header];
                 if (typeof value === 'object' && value !== null) {
-                    if (value.toDate && typeof value.toDate === 'function') {
+                    if (value.toDate && typeof value.toDate === 'function') { // Firestore Timestamp
                         value = value.toDate().toLocaleString();
-                    } else {
+                    } else { // Other objects
                         value = JSON.stringify(value);
                     }
                 }
-                value = String(value).replace(/"/g, '""');
-                if (value.includes(',') || value.includes('\n')) {
+                value = String(value).replace(/"/g, '""'); // Escape double quotes
+                if (String(value).includes(',') || String(value).includes('\n')) { // Enclose if contains comma or newline
                     value = `"${value}"`;
                 }
                 return value;
@@ -706,11 +1131,18 @@ export default function Main() {
         const csvString = csvRows.join('\n');
         const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (link.download !== undefined) { // Feature detection
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        } else {
+            showMessageBox("CSV export not fully supported in this browser.");
+        }
     };
 
     const exportTradeHistory = () => {
@@ -718,13 +1150,13 @@ export default function Main() {
             Date: trade.timestamp?.toDate ? trade.timestamp.toDate().toLocaleDateString() : '',
             Asset: trade.asset,
             Direction: trade.direction,
-            EntryPrice: trade.entryPrice,
-            ExpiryPrice: trade.expiryPrice,
-            OpenTime: trade.openTime,
-            ExpirationTime: trade.expirationTime,
-            AmountInvested: trade.amount,
+            NumberOfTrades: trade.numberOfTrades,
+            TradeDuration: trade.tradeDuration,
+            SessionStartTime: trade.tradeStartTime,
+            SessionStopTime: trade.tradeStopTime,
+            AmountInvestedTotal: trade.amount,
             Outcome: trade.outcome,
-            ProfitLoss: trade.profit,
+            ProfitLossTotal: trade.profit,
             Notes: trade.notes
         }));
         exportToCsv(formattedTrades, 'trade_history.csv');
@@ -742,57 +1174,48 @@ export default function Main() {
 
     const exportOverallStats = () => {
         const overallStatsData = [{
-            'Total Trades': stats.totalTrades,
+            'Total Trade Entries': stats.totalTradeEntries,
+            'Total Individual Trades': stats.totalIndividualTrades,
             'Win Rate (%)': stats.winRate,
             'Net Profit/Loss ($)': stats.totalProfitLoss,
-            'Average Profit per Win ($)': stats.averageProfitPerWin,
-            'Average Loss per Loss ($)': stats.averageLossPerLoss,
+            'Average Profit per Winning Session ($)': stats.averageProfitPerWinningSession,
+            'Average Loss per Losing Session ($)': stats.averageLossPerLosingSession,
             'Profit Factor': stats.profitFactor
         }];
         exportToCsv(overallStatsData, 'overall_trading_statistics.csv');
     };
 
-    const exportWinRateByAsset = () => {
-        exportToCsv(winRateByAssetData, 'win_rate_by_asset.csv');
-    };
+    const exportWinRateByAsset = () => exportToCsv(winRateByAssetData, 'win_rate_by_asset.csv');
+    const exportWinRateByDirection = () => exportToCsv(winRateByDirectionData, 'win_rate_by_direction.csv');
+    const exportProfitLossDistribution = () => exportToCsv(profitLossDistributionData, 'profit_loss_distribution.csv');
+    const exportTradeCountByDayOfWeek = () => exportToCsv(tradeCountByDayOfWeekData, 'trade_count_by_day_of_week.csv');
+    const exportTradeCountByHourOfDay = () => exportToCsv(tradeCountByHourOfDayData, 'trade_count_by_hour_of_day.csv');
+    const exportAverageProfitLoss = () => exportToCsv(averageProfitLossData, 'average_profit_loss_per_session.csv');
 
-    const exportWinRateByDirection = () => {
-        exportToCsv(winRateByDirectionData, 'win_rate_by_direction.csv');
-    };
-
-    const exportProfitLossDistribution = () => {
-        exportToCsv(profitLossDistributionData, 'profit_loss_distribution.csv');
-    };
-
-    const exportTradeCountByDayOfWeek = () => {
-        exportToCsv(tradeCountByDayOfWeekData, 'trade_count_by_day_of_week.csv');
-    };
-
-    const exportTradeCountByHourOfDay = () => {
-        exportToCsv(tradeCountByHourOfDayData, 'trade_count_by_hour_of_day.csv');
-    };
-
-    const exportAverageProfitLoss = () => {
-        exportToCsv(averageProfitLossData, 'average_profit_loss_per_trade.csv');
-    };
 
     const exportDailyCalendarData = () => {
         const formattedDailyStats = Object.keys(dailyStats).map(date => ({
             Date: date,
-            TotalTrades: dailyStats[date].totalTrades,
-            TotalProfitLoss: dailyStats[date].totalProfitLoss
-        }));
+            TotalIndividualTrades: dailyStats[date].totalTrades,
+            TotalProfitLoss: dailyStats[date].totalProfitLoss,
+            TradeEntries: dailyStats[date].tradeCount
+        })).sort((a, b) => new Date(a.Date) - new Date(b.Date));
         exportToCsv(formattedDailyStats, 'calendar_daily_performance.csv');
     };
 
     const exportWeeklyCalendarData = () => {
-        exportToCsv(weeklySummaries, 'calendar_weekly_summaries.csv');
+        exportToCsv(weeklySummaries.map(w => ({
+            WeekStartDate: w.startDate,
+            WeekEndDate: w.endDate,
+            TotalIndividualTrades: w.totalTrades,
+            TotalProfitLoss: w.totalProfitLoss
+        })), 'calendar_weekly_summaries.csv');
     };
 
     const exportMonthlyCalendarData = () => {
         const formattedMonthlySummary = [{
             Month: currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' }),
-            TotalTrades: monthlySummary.totalTrades,
+            TotalIndividualTrades: monthlySummary.totalTrades,
             TotalProfitLoss: monthlySummary.totalProfitLoss
         }];
         exportToCsv(formattedMonthlySummary, 'calendar_monthly_summary.csv');
@@ -808,9 +1231,23 @@ export default function Main() {
         }));
         exportToCsv(formattedGoals, 'goal_history.csv');
     };
-    
-    
-    const startEditingJournal = (journal) => {
+
+
+    // Journal Management Functions
+    const handleSelectJournal = async (journalId: string, journalName: string) => {
+        if (!db || !userId || journalId === currentJournalId) return;
+        setLoading(true); // Set loading true when switching journals
+        setCurrentJournalId(journalId);
+        setCurrentJournalName(journalName);
+        await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/journals`, journalId), {
+            lastAccessedAt: serverTimestamp()
+        });
+        // Data fetching useEffect will trigger due to currentJournalId change and set loading to false
+        showMessageBox(`Switched to journal: "${journalName}"`);
+        setCurrentPage('Dashboard');
+    };
+
+    const startEditingJournal = (journal: Journal) => {
         setEditingJournalId(journal.id);
         setEditJournalName(journal.name);
     };
@@ -819,8 +1256,8 @@ export default function Main() {
         setEditingJournalId(null);
         setEditJournalName('');
     };
-    
-    const saveEditingJournal = async (journalId) => {
+
+    const saveEditingJournal = async (journalId: string) => {
         if (!db || !userId) { showMessageBox("Database not ready."); return; }
         if (!editJournalName.trim()) {
             showMessageBox("Journal name cannot be empty.");
@@ -843,10 +1280,10 @@ export default function Main() {
         });
     };
 
-    const handleDeleteJournal = (journalId, journalName) => {
+    const handleDeleteJournal = (journalId: string, journalName: string) => {
         if (!db || !userId) { showMessageBox("Database not ready."); return; }
-        if (journals.length === 1) {
-            showMessageBox("You cannot delete your last journal. Create a new one first if you wish to replace it.");
+        if (journals.length <= 1) { // Prevent deleting the last journal
+            showMessageBox("You cannot delete your only journal. Create another one first if you wish to delete this one.");
             return;
         }
 
@@ -855,33 +1292,24 @@ export default function Main() {
                 const batch = writeBatch(db);
                 const journalDocRef = doc(db, `artifacts/${appId}/users/${userId}/journals`, journalId);
 
-                // Delete subcollections (Firestore doesn't delete subcollections automatically)
-                const subcollectionsToDelete = ['trades', 'transactions', 'goals'];
-                for (const subColName of subcollectionsToDelete) {
-                    const subCollectionRef = collection(journalDocRef, subColName);
-                    const snapshot = await getDocs(subCollectionRef);
+                const subcollectionsData = ['trades', 'transactions', 'goals', 'userProfile'];
+                for (const subColName of subcollectionsData) {
+                    const subColRef = collection(db, journalDocRef.path, subColName);
+                    const snapshot = await getDocs(subColRef);
                     snapshot.docs.forEach(d => batch.delete(d.ref));
                 }
-                // Delete userProfile sub-documents
-                const userProfileSubColRef = collection(journalDocRef, 'userProfile');
-                const userProfileSnapshot = await getDocs(userProfileSubColRef);
-                userProfileSnapshot.docs.forEach(d => batch.delete(d.ref));
-
-                // Delete the journal document itself
                 batch.delete(journalDocRef);
                 await batch.commit();
 
-                // After deletion, select another journal if the deleted one was current
+                // After deletion, select another journal
                 if (currentJournalId === journalId) {
                     const remainingJournals = journals.filter(j => j.id !== journalId);
                     if (remainingJournals.length > 0) {
+                        // Sort remaining journals by lastAccessedAt (desc) to pick the most recent
+                        remainingJournals.sort((a, b) => (b.lastAccessedAt?.toMillis() || 0) - (a.lastAccessedAt?.toMillis() || 0));
                         const newCurrent = remainingJournals[0];
-                        setCurrentJournalId(newCurrent.id);
-                        setCurrentJournalName(newCurrent.name);
-                        await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/journals`, newCurrent.id), {
-                            lastAccessedAt: serverTimestamp()
-                        });
-                    } else {
+                        await handleSelectJournal(newCurrent.id, newCurrent.name);
+                    } else { // This case should not be hit due to the check above
                         setCurrentJournalId(null);
                         setCurrentJournalName('');
                     }
@@ -889,11 +1317,13 @@ export default function Main() {
                 showMessageBox(`Journal "${journalName}" and all its data deleted successfully.`);
             } catch (error) {
                 console.error("Error deleting journal:", error);
-                showMessageBox("Failed to delete journal. Please try again.");
+                const errorMsg = (error instanceof Error) ? error.message : String(error);
+                showMessageBox("Failed to delete journal. Please try again. Error: " + errorMsg);
             } finally { setShowModal(false); }
         });
     };
-    
+
+
     // Calculate 20% of current balance for risk amount
     const amountToRisk = useMemo(() => {
         return (currentBalance * 0.20).toFixed(2);
@@ -901,20 +1331,27 @@ export default function Main() {
 
     const dailyProgress = dailyProfitExpectation > 0 ? (currentDayProfit / dailyProfitExpectation) * 100 : 0;
     const weeklyProgress = weeklyProfitExpectation > 0 ? (currentWeekProfit / weeklyProfitExpectation) * 100 : 0;
-    
+
 
     // If data is still loading, show a loading spinner
-    // if (loading) {
-    //     return (
-    //         <div className={`flex items-center justify-center min-h-screen ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-800'} font-inter`}>
-    //             <div className="text-lg font-semibold">Loading journal data...</div>
-    //         </div>
-    //     );
-    // }
+    if (!userId) { // Also check if userId is available before showing main app
+        return (
+            <div className={`flex items-center justify-center min-h-screen ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-800'} font-inter`}>
+                <div className="text-lg font-semibold">Initializing authentication...</div>
+            </div>
+        );
+    }
+    if (loading && currentJournalId) { // Show loading only if a journal is selected and data is being fetched
+        return (
+            <div className={`flex items-center justify-center min-h-screen ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-800'} font-inter`}>
+                <div className="text-lg font-semibold">Loading journal data...</div>
+            </div>
+        );
+    }
 
     return (
         <div className={`min-h-screen ${isDarkMode ? 'bg-gray-900 text-gray-300' : 'bg-gray-100 text-gray-800'} p-4 font-inter`}>
-            {/* Custom Modal
+            {/* Custom Modal */}
             {showModal && (
                 <ShowModal
                     isDarkMode={isDarkMode}
@@ -924,7 +1361,7 @@ export default function Main() {
                 />
             )}
             {/* Capital Management Modal */}
-            {/* {showCapitalManagementModal && (
+            {showCapitalManagementModal && (
                 <ShowCapitalManagementModal
                     isDarkMode={isDarkMode}
                     setShowCapitalManagementModal={setShowCapitalManagementModal}
@@ -936,9 +1373,9 @@ export default function Main() {
                     handleWithdraw={handleWithdraw}
                     handleResetJournal={handleResetJournal}
                 />
-            )} */}
+            )}
             {/* Daily Profit Expectation Modal */}
-            {/* {showDailyProfitExpectationModal && (
+            {showDailyProfitExpectationModal && (
                 <ShowDailyProfitExpectationModal
                     isDarkMode={isDarkMode}
                     setShowDailyProfitExpectationModal={setShowDailyProfitExpectationModal}
@@ -947,9 +1384,9 @@ export default function Main() {
                     handleSaveDailyProfitExpectation={handleSaveDailyProfitExpectation}
                     dailyProfitExpectation={dailyProfitExpectation}
                 />
-            )} */}
+            )}
             {/* Weekly Profit Expectation Modal */}
-            {/* {showWeeklyProfitExpectationModal && (
+            {showWeeklyProfitExpectationModal && (
                 <ShowWeeklyProfitExpectationModal
                     isDarkMode={isDarkMode}
                     setShowWeeklyProfitExpectationModal={setShowWeeklyProfitExpectationModal}
@@ -958,7 +1395,7 @@ export default function Main() {
                     handleSaveWeeklyProfitExpectation={handleSaveWeeklyProfitExpectation}
                     weeklyProfitExpectation={weeklyProfitExpectation}
                 />
-            )} */}
+            )}
             {/* Add New Journal Modal */}
             {showAddJournalModal && (
                 <ShowAddJournalModal
@@ -1008,6 +1445,66 @@ export default function Main() {
                 setEditTransactionAmount={setEditTransactionAmount}
                 editTransactionNote={editTransactionNote}
                 setEditTransactionNote={setEditTransactionNote}
+                cumulativeProfitLossChartData={cumulativeProfitLossChartData}
+                dailyProfitLossBarChartData={dailyProfitLossBarChartData}
+                dailyProfitExpectation={dailyProfitExpectation}
+                winRateByAssetData={winRateByAssetData}
+                winRateByDirectionData={winRateByDirectionData}
+                profitLossDistributionData={profitLossDistributionData}
+                tradeCountByDayOfWeekData={tradeCountByDayOfWeekData}
+                tradeCountByHourOfDayData={tradeCountByHourOfDayData}
+                exportOverallStats={exportOverallStats}
+                exportWinRateByAsset={exportWinRateByAsset}
+                exportWinRateByDirection={exportWinRateByDirection}
+                exportProfitLossDistribution={exportProfitLossDistribution}
+                exportTradeCountByDayOfWeek={exportTradeCountByDayOfWeek}
+                exportTradeCountByHourOfDay={exportTradeCountByHourOfDay}
+                averageProfitLossData={averageProfitLossData}
+                exportAverageProfitLoss={exportAverageProfitLoss}
+                handleAddTrade={handleAddTrade}
+                trades={trades}
+                exportTradeHistory={exportTradeHistory}
+                asset={asset}
+                setAsset={setAsset}
+                direction={direction}
+                setDirection={setDirection}
+                amount={amount}
+                setAmount={setAmount}
+                outcome={outcome}
+                setOutcome={setOutcome}
+                profit={profit}
+                setProfit={setProfit}
+                notes={notes}
+                setNotes={setNotes}
+                editingTradeId={editingTradeId}
+                editTradeData={editTradeData}
+                setEditTradeData={setEditTradeData}
+                cancelEditingTrade={cancelEditingTrade}
+                handleDeleteTrade={handleDeleteTrade}
+                startEditingTrade={startEditingTrade}
+                saveEditingTrade={saveEditingTrade}
+                currentBalance={currentBalance}
+                stats={stats}
+                cumulativeProfitLossChartData={cumulativeProfitLossChartData}
+                weeklyProfitExpectation={weeklyProfitExpectation}
+                currentDayProfit={currentDayProfit}
+                currentWeekProfit={currentWeekProfit}
+                dailyProgress={dailyProgress}
+                weeklyProgress={weeklyProgress}
+                amountToRisk={amountToRisk}
+                setShowDailyProfitExpectationModal={setShowDailyProfitExpectationModal}
+                setShowWeeklyProfitExpectationModal={setShowWeeklyProfitExpectationModal}
+                setShowCapitalManagementModal={setShowCapitalManagementModal}
+                handleGetTradingInsights={handleGetTradingInsights}
+                llmLoading={llmLoading}
+                numberOfTrades={numberOfTrades}
+                setNumberOfTrades={setNumberOfTrades}
+                tradeDuration={tradeDuration}
+                setTradeDuration={setTradeDuration}
+                tradeStopTime={tradeStopTime}
+                setTradeStopTime={setTradeStopTime}
+                tradeStartTime={tradeStartTime}
+                setTradeStartTime={setTradeStartTime}
              />
         </div>
     )

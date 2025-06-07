@@ -3,16 +3,17 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine } from 'recharts';
 import { PIE_COLORS } from '../utils/meterColor';
 
+
 type StatisticsProps = {
     isDarkMode: boolean;
-    cumulativeProfitLossChartData: any[];
-    dailyProfitLossBarChartData: any[];
+    cumulativeProfitLossChartData: Array<{ date: string;['Cumulative Profit']: number }>;
+    dailyProfitLossBarChartData: Array<{ date: string; profit: number }>;
     dailyProfitExpectation: number;
-    winRateByAssetData: any[];
-    winRateByDirectionData: any[];
-    profitLossDistributionData: any[];
-    tradeCountByDayOfWeekData: any[];
-    tradeCountByHourOfDayData: any[];
+    winRateByAssetData: { name: string; wins: number; total: number }[];
+    winRateByDirectionData: { name: string; wins: number; total: number }[];
+    profitLossDistributionData: Array<{ range: string; count: number }>;
+    tradeCountByDayOfWeekData: { name: string; count: number }[];
+    tradeCountByHourOfDayData: { name: string; count: number }[];
     exportOverallStats: () => void;
     exportDailyCalendarData: () => void;
     exportWinRateByAsset: () => void;
@@ -20,7 +21,7 @@ type StatisticsProps = {
     exportProfitLossDistribution: () => void;
     exportTradeCountByDayOfWeek: () => void;
     exportTradeCountByHourOfDay: () => void;
-    averageProfitLossData: any[];
+    averageProfitLossData: { name: string; value: number }[];
     exportAverageProfitLoss: () => void;
 };
 
@@ -59,7 +60,7 @@ export default function Statistics({
                                 <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#555' : '#ccc'} />
                                 <XAxis dataKey="date" stroke={isDarkMode ? '#ccc' : '#666'} tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} />
                                 <YAxis stroke={isDarkMode ? '#ccc' : '#666'} />
-                                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Profit/Loss']} labelFormatter={(label) => `Date: ${label}`} contentStyle={{ backgroundColor: isDarkMode ? '#333' : '#fff', border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`, borderRadius: '8px', padding: '10px', fontSize: '12px', color: isDarkMode ? 'white' : 'black' }} labelStyle={{ color: isDarkMode ? 'white' : 'black' }} itemStyle={{ color: isDarkMode ? 'white' : 'black' }} />
+                                <Tooltip formatter={(value) => [typeof value === 'number' ? `$${value.toFixed(2)}` : `$${Number(value).toFixed(2)}`, 'Profit/Loss']} labelFormatter={(label) => `Date: ${label}`} contentStyle={{ backgroundColor: isDarkMode ? '#333' : '#fff', border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`, borderRadius: '8px', padding: '10px', fontSize: '12px', color: isDarkMode ? 'white' : 'black' }} labelStyle={{ color: isDarkMode ? 'white' : 'black' }} itemStyle={{ color: isDarkMode ? 'white' : 'black' }} />
                                 <Line type="monotone" dataKey="Cumulative Profit" stroke={isDarkMode ? '#4ADE80' : '#22C55E'} strokeWidth={2} dot={false} activeDot={{ r: 8 }} />
                             </LineChart>
                         </ResponsiveContainer>
@@ -82,7 +83,7 @@ export default function Statistics({
                                 <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#555' : '#ccc'} />
                                 <XAxis dataKey="date" stroke={isDarkMode ? '#ccc' : '#666'} tickFormatter={(tick) => new Date(tick).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} />
                                 <YAxis stroke={isDarkMode ? '#ccc' : '#666'} />
-                                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Profit/Loss']} labelFormatter={(label) => `Date: ${label}`} contentStyle={{ backgroundColor: isDarkMode ? '#333' : '#fff', border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`, borderRadius: '8px', padding: '10px', fontSize: '12px', color: isDarkMode ? 'white' : 'black' }} labelStyle={{ color: isDarkMode ? 'white' : 'black' }} itemStyle={{ color: isDarkMode ? 'white' : 'black' }} />
+                                <Tooltip formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Profit/Loss']} labelFormatter={(label) => `Date: ${label}`} contentStyle={{ backgroundColor: isDarkMode ? '#333' : '#fff', border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`, borderRadius: '8px', padding: '10px', fontSize: '12px', color: isDarkMode ? 'white' : 'black' }} labelStyle={{ color: isDarkMode ? 'white' : 'black' }} itemStyle={{ color: isDarkMode ? 'white' : 'black' }} />
                                 <Bar dataKey="profit">
                                     {dailyProfitLossBarChartData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.profit >= 0 ? (isDarkMode ? '#4ADE80' : '#22C55E') : (isDarkMode ? '#F87171' : '#EF4444')} />
@@ -237,7 +238,7 @@ export default function Statistics({
                                 <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#555' : '#ccc'} />
                                 <XAxis dataKey="name" stroke={isDarkMode ? '#ccc' : '#666'} />
                                 <YAxis stroke={isDarkMode ? '#ccc' : '#666'} />
-                                <Tooltip formatter={(value) => [`$${value.toFixed(2)}`, 'Amount']} labelFormatter={(label) => `Metric: ${label}`} contentStyle={{ backgroundColor: isDarkMode ? '#333' : '#fff', border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`, borderRadius: '8px', padding: '10px', fontSize: '12px', color: isDarkMode ? 'white' : 'black' }} labelStyle={{ color: isDarkMode ? 'white' : 'black' }} itemStyle={{ color: isDarkMode ? 'white' : 'black' }} />
+                                <Tooltip formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Amount']} labelFormatter={(label) => `Metric: ${label}`} contentStyle={{ backgroundColor: isDarkMode ? '#333' : '#fff', border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`, borderRadius: '8px', padding: '10px', fontSize: '12px', color: isDarkMode ? 'white' : 'black' }} labelStyle={{ color: isDarkMode ? 'white' : 'black' }} itemStyle={{ color: isDarkMode ? 'white' : 'black' }} />
                                 <Bar dataKey="value">
                                     {averageProfitLossData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={entry.name === 'Average Win' ? (isDarkMode ? '#4ADE80' : '#22C55E') : (isDarkMode ? '#F87171' : '#EF4444')} />

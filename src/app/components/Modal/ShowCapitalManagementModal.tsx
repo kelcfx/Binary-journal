@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from "react";
-
 interface ShowCapitalManagementModalProps {
     isDarkMode: boolean;
     setShowCapitalManagementModal: (show: boolean) => void;

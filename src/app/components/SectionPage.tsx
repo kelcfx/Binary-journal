@@ -1,5 +1,5 @@
 'use client';
-import { useState } from "react";
+// import { useState } from "react";
 import Dashboard from "./Dashboard";
 import TradeLogs from "./TradeLogs";
 import Statistics from "./Statistics";
@@ -10,74 +10,257 @@ import JournalManagement from "./JournalManagement";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "next-themes";
 
+type Journal = {
+    id: string;
+    name: string;
+};
+
+interface Trade {
+    id: string;
+    asset: string;
+    numberOfTrades: number;
+    tradeDuration: string;
+    direction: string;
+    tradeStartTime: string;
+    tradeStopTime: string;
+    amount: number;
+    outcome: string;
+    profit: number;
+    notes: string;
+    timestamp?: { toDate: () => Date };
+}
+
+interface Transaction {
+    id: string;
+    type: 'deposit' | 'withdrawal';
+    amount: number;
+    note?: string;
+    timestamp: { toDate: () => Date };
+}
+
+interface Goal {
+    id: string | number;
+    type: string;
+    periodStart?: { toDate: () => Date };
+    periodEnd?: { toDate: () => Date };
+    goalAmount: number;
+    actualProfit: number;
+    achieved: boolean;
+}
+
+type MonthlySummary = {
+    totalTrades: number;
+    totalProfitLoss: number;
+};
 
 interface SectionPageProps {
     isDarkMode: boolean;
-    currentJournalId: string;
-    journals: any[]; // You may want to replace 'any[]' with a more specific type if available
-    handleSelectJournal: (id: string, name: string) => void;
-    setShowAddJournalModal: (show: boolean) => void;
+    currentPage: string | null;
     setCurrentPage: (page: string) => void;
-    currentPage: string;
+    journals: Journal[];
     editingJournalId: string | null;
     editJournalName: string;
     setEditJournalName: (name: string) => void;
-    handleDeleteJournal: (id: string) => void;
-    startEditingJournal: (id: string, name: string) => void;
+    currentJournalId: string | null;
+    handleDeleteJournal: (id: string, name: string) => void;
+    startEditingJournal: (journal: Journal) => void;
     cancelEditingJournal: () => void;
-    saveEditingJournal: () => void;
-    exportGoalHistory: () => void; // Add the correct type for exportGoalHistory
-    goalHistory: any; // Add this if goalHistory is also missing from the interface
+    saveEditingJournal: (id: string) => void;
+    handleSelectJournal: (id: string, name: string) => void;
+    setShowAddJournalModal: (show: boolean) => void;
+    handleAddTrade: (e: React.FormEvent<HTMLFormElement>) => void,
+    tradeDate: string,
+    setTradeDate: (value: string) => void,
+    asset: string,
+    setAsset: (value: string) => void,
+    numberOfTrades: string,
+    setNumberOfTrades: (value: string) => void,
+    tradeDuration: string,
+    setTradeDuration: (value: string) => void,
+    tradeStopTime: string,
+    setTradeStopTime: (value: string) => void,
+    tradeStartTime: string,
+    setTradeStartTime: (value: string) => void,
+    outcome: string,
+    setOutcome: (value: string) => void,
+    direction: string,
+    setDirection: (value: string) => void,
+    amount: string,
+    setAmount: (value: string) => void,
+    profit: string,
+    setProfit: (value: string) => void,
+    notes: string,
+    setNotes: (value: string) => void,
+    exportTradeHistory: () => void,
+    trades: Trade[];
+    editingTradeId: string | null;
+    editTradeData: {
+        date: string;
+        asset: string;
+        numberOfTrades: string | number;
+        tradeDuration: string;
+        direction: string;
+        tradeStartTime: string;
+        tradeStopTime: string;
+        amount: string | number;
+        outcome: string;
+        profit: string | number;
+        notes: string;
+    };
+    setEditTradeData: (data: {
+        date: string;
+        asset: string;
+        numberOfTrades: string | number;
+        tradeDuration: string;
+        direction: string;
+        tradeStartTime: string;
+        tradeStopTime: string;
+        amount: string | number;
+        outcome: string;
+        profit: string | number;
+        notes: string;
+    }) => void;
+    saveEditingTrade: (id: string) => void;
+    handleDeleteTrade: (id: string) => void;
+    startEditingTrade: (trade: Trade) => void;
+    cancelEditingTrade: () => void;
+    currentBalance: number;
+    stats: {
+        totalProfitLoss: number;
+        winRate: number;
+        totalTrades: number;
+        averageProfitPerWin: number;
+        averageLossPerLoss: number;
+        profitFactor: number;
+    };
+    cumulativeProfitLossChartData: Array<{ date: string;['Cumulative Profit']: number }>;
+    dailyProfitExpectation: number;
+    weeklyProfitExpectation: number;
+    currentDayProfit: number;
+    currentWeekProfit: number;
+    dailyProgress: number;
+    weeklyProgress: number;
+    amountToRisk: string;
+    setShowDailyProfitExpectationModal: (show: boolean) => void;
+    setShowWeeklyProfitExpectationModal: (show: boolean) => void;
+    setShowCapitalManagementModal: (show: boolean) => void;
+    handleGetTradingInsights: () => void;
+    llmLoading: boolean;
+    dailyProfitLossBarChartData: Array<{ date: string; profit: number }>;
+    winRateByAssetData: { name: string; wins: number; total: number }[];
+    winRateByDirectionData: { name: string; wins: number; total: number }[];
+    profitLossDistributionData: Array<{ range: string; count: number }>;
+    tradeCountByDayOfWeekData: { name: string; count: number }[];
+    tradeCountByHourOfDayData: { name: string; count: number }[];
+    exportOverallStats: () => void;
     exportDailyCalendarData: () => void;
-    exportWeeklyCalendarData: () => void;
-    exportMonthlyCalendarData: () => void;
-    handlePrevMonth: () => void;
-    handleNextMonth: () => void;
-    currentMonth: string;
-    dailyStats: any;
-    weeklySummaries: any;
-    monthlySummary: any;
-    editingTransactionId: string | null; // Add this line with the appropriate type
-    deleteTransaction: (id: string) => void; // Add this line with the appropriate type
-    exportTransactions: () => void;
-    transactions: any;
-    deleteTransaction: (id: string) => void;
-    startEditingTransaction: (id: string) => void;
-    cancelEditingTransaction: () => void;
-    saveEditingTransaction: () => void;
-    editingTransactionId: string | null;
-    editTransactionAmount: any;
-    setEditTransactionAmount: (amount: any) => void;
-    editTransactionNote: string;
-    setEditTransactionNote: (note: string) => void
+    exportWinRateByAsset: () => void;
+    exportWinRateByDirection: () => void;
+    exportProfitLossDistribution: () => void;
+    exportTradeCountByDayOfWeek: () => void;
+    exportTradeCountByHourOfDay: () => void;
+    averageProfitLossData: { name: string; value: number }[];
+    exportAverageProfitLoss: () => void;
+    exportTransactions: () => void,
+    transactions: Transaction[],
+    deleteTransaction: (id: string) => void,
+    startEditingTransaction: (transaction: Transaction) => void,
+    cancelEditingTransaction: () => void,
+    saveEditingTransaction: (id: string) => void,
+    editingTransactionId: string | null,
+    editTransactionAmount: string,
+    setEditTransactionAmount: (value: string) => void,
+    editTransactionNote: string,
+    setEditTransactionNote: (value: string) => void,
+    handlePrevMonth: () => void,
+    handleNextMonth: () => void,
+    currentMonth: Date,
+    dailyStats: Record<string, { totalTrades: number; totalProfitLoss: number }>,
+    weeklySummaries: Array<{ startDate: string; endDate: string; totalTrades: number; totalProfitLoss: number }>,
+    monthlySummary: MonthlySummary,
+    exportWeeklyCalendarData: () => void,
+    exportMonthlyCalendarData: () => void,
+    exportGoalHistory: () => void,
+    goalHistory: Goal[],
 }
 
 export default function SectionPage({ 
     isDarkMode,
-    currentJournalId,
     journals,
-    handleSelectJournal,
-    setShowAddJournalModal,
-    setCurrentPage,
     currentPage,
+    setCurrentPage,
     editingJournalId,
     editJournalName,
     setEditJournalName,
+    currentJournalId,
     handleDeleteJournal,
     startEditingJournal,
     cancelEditingJournal,
     saveEditingJournal,
-    exportGoalHistory,
-    goalHistory,
-    handlePrevMonth,
-    handleNextMonth,
-    currentMonth,
-    dailyStats,
-    weeklySummaries,
-    monthlySummary,
+    handleSelectJournal,
+    setShowAddJournalModal,
+    handleAddTrade,
+    tradeDate,
+    setTradeDate,
+    asset,
+    setAsset,
+    numberOfTrades,
+    setNumberOfTrades,
+    tradeDuration,
+    setTradeDuration,
+    tradeStopTime,
+    setTradeStopTime,
+    tradeStartTime,
+    setTradeStartTime,
+    outcome,
+    setOutcome,
+    direction,
+    setDirection,
+    amount,
+    setAmount,
+    profit,
+    setProfit,
+    notes,
+    setNotes,
+    exportTradeHistory,
+    trades,
+    editingTradeId,
+    editTradeData,
+    setEditTradeData,
+    saveEditingTrade,
+    handleDeleteTrade,
+    startEditingTrade,
+    cancelEditingTrade,
+    currentBalance,
+    stats,
+    cumulativeProfitLossChartData,
+    weeklyProfitExpectation,
+    currentDayProfit,
+    currentWeekProfit,
+    dailyProgress,
+    weeklyProgress,
+    amountToRisk,
+    setShowDailyProfitExpectationModal,
+    setShowWeeklyProfitExpectationModal,
+    setShowCapitalManagementModal,
+    handleGetTradingInsights,
+    llmLoading,
+    dailyProfitLossBarChartData,
+    dailyProfitExpectation,
+    winRateByAssetData,
+    winRateByDirectionData,
+    profitLossDistributionData,
+    tradeCountByDayOfWeekData,
+    tradeCountByHourOfDayData,
+    exportOverallStats,
     exportDailyCalendarData,
-    exportWeeklyCalendarData,
-    exportMonthlyCalendarData,
+    exportWinRateByAsset,
+    exportWinRateByDirection,
+    exportProfitLossDistribution,
+    exportTradeCountByDayOfWeek,
+    exportTradeCountByHourOfDay,
+    averageProfitLossData,
+    exportAverageProfitLoss,
     exportTransactions,
     transactions,
     deleteTransaction,
@@ -88,7 +271,17 @@ export default function SectionPage({
     editTransactionAmount,
     setEditTransactionAmount,
     editTransactionNote,
-    setEditTransactionNote
+    setEditTransactionNote,
+    handlePrevMonth,
+    handleNextMonth,
+    currentMonth,
+    dailyStats,
+    weeklySummaries,
+    monthlySummary,
+    exportWeeklyCalendarData,
+    exportMonthlyCalendarData,
+    exportGoalHistory,
+    goalHistory,
 }: SectionPageProps) {
     const { user, logOut } = useAuth();
     const userName = user?.displayName;
@@ -228,17 +421,90 @@ export default function SectionPage({
             </div>
         
             {/* Conditional Rendering of Pages */}
-            {/* {currentPage === 'Dashboard' && (
-                <Dashboard />
-            )} */}
+            {/* Dashboard page */}
+            {currentPage === 'Dashboard' && (
+                <Dashboard
+                    isDarkMode={isDarkMode}
+                    currentBalance={currentBalance}
+                    stats={stats}
+                    cumulativeProfitLossChartData={cumulativeProfitLossChartData}
+                    dailyProfitExpectation={dailyProfitExpectation}
+                    weeklyProfitExpectation={weeklyProfitExpectation}
+                    currentDayProfit= {currentDayProfit}
+                    currentWeekProfit={currentWeekProfit}
+                    dailyProgress= {dailyProgress}
+                    weeklyProgress= {weeklyProgress}
+                    amountToRisk= {amountToRisk}
+                    setShowDailyProfitExpectationModal= {setShowDailyProfitExpectationModal}
+                    setShowWeeklyProfitExpectationModal= {setShowWeeklyProfitExpectationModal}
+                    setShowCapitalManagementModal= {setShowCapitalManagementModal}
+                    handleGetTradingInsights={handleGetTradingInsights}
+                    llmLoading= {llmLoading}
+                />
+            )}
 
-            {/* {currentPage === 'TradeLogs' && (
-                <TradeLogs />
-            )} */}
+            {/* TradeLogs */}
+            {currentPage === 'TradeLogs' && (
+                <TradeLogs
+                    isDarkMode={isDarkMode}
+                    handleAddTrade={handleAddTrade}
+                    tradeDate={tradeDate}
+                    setTradeDate={setTradeDate}
+                    asset={asset}
+                    setAsset={setAsset}
+                    numberOfTrades={numberOfTrades}
+                    setNumberOfTrades={setNumberOfTrades}
+                    tradeDuration={tradeDuration}
+                    setTradeDuration={setTradeDuration}
+                    tradeStopTime={tradeStopTime}
+                    setTradeStopTime={setTradeStopTime}
+                    tradeStartTime={tradeStartTime}
+                    setTradeStartTime={setTradeStartTime}
+                    outcome={outcome}
+                    setOutcome={setOutcome}
+                    direction={direction}
+                    setDirection={setDirection}
+                    amount={amount}
+                    setAmount={setAmount}
+                    profit={profit}
+                    setProfit={setProfit}
+                    notes={notes}
+                    setNotes={setNotes}
+                    exportTradeHistory={exportTradeHistory}
+                    trades={trades}
+                    editingTradeId={editingTradeId}
+                    editTradeData={editTradeData}
+                    setEditTradeData={setEditTradeData}
+                    saveEditingTrade={saveEditingTrade}
+                    handleDeleteTrade={handleDeleteTrade}
+                    startEditingTrade={startEditingTrade}
+                    cancelEditingTrade={cancelEditingTrade}
+                />
+            )}
 
-            {/* {currentPage === 'Statistics' && (
-                <Statistics />
-            )} */}
+            {/* Statistics Page */}
+            {currentPage === 'Statistics' && (
+                <Statistics
+                    isDarkMode={isDarkMode}
+                    cumulativeProfitLossChartData={cumulativeProfitLossChartData}
+                    dailyProfitLossBarChartData={dailyProfitLossBarChartData}
+                    dailyProfitExpectation={dailyProfitExpectation}
+                    winRateByAssetData={winRateByAssetData}
+                    winRateByDirectionData={winRateByDirectionData}
+                    profitLossDistributionData={profitLossDistributionData}
+                    tradeCountByDayOfWeekData={tradeCountByDayOfWeekData}
+                    tradeCountByHourOfDayData={tradeCountByHourOfDayData}
+                    exportOverallStats={exportOverallStats}
+                    exportDailyCalendarData={exportDailyCalendarData}
+                    exportWinRateByAsset={exportWinRateByAsset}
+                    exportWinRateByDirection={exportWinRateByDirection}
+                    exportProfitLossDistribution={exportProfitLossDistribution}
+                    exportTradeCountByDayOfWeek={exportTradeCountByDayOfWeek}
+                    exportTradeCountByHourOfDay={exportTradeCountByHourOfDay}
+                    averageProfitLossData={averageProfitLossData}
+                    exportAverageProfitLoss={exportAverageProfitLoss}
+                />
+            )}
 
             {/* Transactions page */}
             {currentPage === 'Transactions' && (

@@ -21,7 +21,7 @@ interface DashboardProps {
     currentWeekProfit: number;
     dailyProgress: number;
     weeklyProgress: number;
-    amountToRisk: number;
+    amountToRisk: string;
     setShowDailyProfitExpectationModal: (show: boolean) => void;
     setShowWeeklyProfitExpectationModal: (show: boolean) => void;
     setShowCapitalManagementModal: (show: boolean) => void;
@@ -71,7 +71,7 @@ export default function Dashboard({
                                 <XAxis dataKey="date" hide />
                                 <YAxis hide domain={['auto', 'auto']} />
                                 <Tooltip
-                                    formatter={(value) => [`$${value.toFixed(2)}`, 'Profit/Loss']}
+                                    formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Profit/Loss']}
                                     labelFormatter={(label) => `Date: ${label}`}
                                     contentStyle={{ backgroundColor: isDarkMode ? '#333' : '#fff', border: `1px solid ${isDarkMode ? '#555' : '#ccc'}`, borderRadius: '8px', padding: '10px', fontSize: '12px', color: isDarkMode ? 'white' : 'black' }}
                                     labelStyle={{ color: isDarkMode ? 'white' : 'black' }}
@@ -106,7 +106,7 @@ export default function Dashboard({
                     Goal: <span className="font-bold">${dailyProfitExpectation.toFixed(2)}</span>
                 </p>
                 <p className={`mb-1 text-lg font-bold ${currentDayProfit >= 0 ? (isDarkMode ? 'text-green-400' : 'text-green-600') : (isDarkMode ? 'text-red-400' : 'text-red-600')}`}>
-                    Today's P/L: ${currentDayProfit.toFixed(2)}
+                    Today&#39;s P/L: ${currentDayProfit.toFixed(2)}
                 </p>
                 <div className={`w-full ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full h-2 mb-2 overflow-hidden`}>
                     <div
@@ -132,7 +132,7 @@ export default function Dashboard({
                     Goal: <span className="font-bold">${weeklyProfitExpectation.toFixed(2)}</span>
                 </p>
                 <p className={`mb-1 text-lg font-bold ${currentWeekProfit >= 0 ? (isDarkMode ? 'text-green-400' : 'text-green-600') : (isDarkMode ? 'text-red-400' : 'text-red-600')}`}>
-                    This Week's P/L: ${currentWeekProfit.toFixed(2)}
+                    This Week&#39;s P/L: ${currentWeekProfit.toFixed(2)}
                 </p>
                 <div className={`w-full ${isDarkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full h-2 mb-2 overflow-hidden`}>
                     <div

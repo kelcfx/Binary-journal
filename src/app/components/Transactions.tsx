@@ -1,12 +1,20 @@
 'use client';
-import { useState } from "react";
+
+// Define the Transaction interface if not already defined or import it from your models/types
+interface Transaction {
+    id: string;
+    type: 'deposit' | 'withdrawal';
+    amount: number;
+    note?: string;
+    timestamp: { toDate: () => Date };
+}
 
 interface TransactionsProps {
     isDarkMode: boolean,
     exportTransactions: () => void,
-    transactions: any[],
+    transactions: Transaction[],
     deleteTransaction: (id: string) => void,
-    startEditingTransaction: (transaction: any) => void,
+    startEditingTransaction: (transaction: Transaction) => void,
     cancelEditingTransaction: () => void,
     saveEditingTransaction: (id: string) => void,
     editingTransactionId: string | null,

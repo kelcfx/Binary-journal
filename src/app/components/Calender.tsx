@@ -61,7 +61,7 @@ export default function Calendar({
             <div className="grid grid-cols-7 gap-1">
                 {daysInMonth.map((day, index) => {
                     const dateKey = day ? formatYYYYMMDD(day) : null;
-                    const dayStatsData = dailyStats[dateKey] || { totalTrades: 0, totalProfitLoss: 0 };
+                    const dayStatsData = dateKey && dailyStats[dateKey] ? dailyStats[dateKey] : { totalTrades: 0, totalProfitLoss: 0 };
                     const isProfitable = dayStatsData.totalProfitLoss > 0;
                     const isLoss = dayStatsData.totalProfitLoss < 0;
 
